@@ -1,0 +1,6 @@
+[tool.pytest.ini_options]
+# Default run = fast, hermetic unit + integration + pact. E2E (Playwright) is
+# authored under tests/e2e and run separately once the UI is built.
+addopts = "--ignore=tests/e2e"
+testpaths = ["tests"]
+asyncio_mode = "auto"

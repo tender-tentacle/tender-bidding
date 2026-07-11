@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+ENV/
+env/
+.env
+
+# SQLite
+*.db
+*.sqlite3
+
+# Node/React
+node_modules/
+dist/
+dist-ssr/
+*.local
+.eslintcache
+.stylelintcache
+.vite
+.env.production
+.env.development
+.env.local
+.env.*.local
+*.tsbuildinfo
