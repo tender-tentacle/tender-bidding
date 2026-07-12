@@ -788,3 +788,53 @@ body {
     text-align: left;
   }
 }
+
+/* ── Expert backend: prompts editor ─────────────────────────────────── */
+.expert-prompts {
+  margin-top: 32px;
+  max-width: 860px;
+}
+.expert-prompt {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.expert-prompt-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.expert-prompt-text {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+/* ── Expert backend: KPI tiles ──────────────────────────────────────── */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 28px;
+  max-width: 1100px;
+}
+.kpi-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.kpi-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--on-surface);
+}

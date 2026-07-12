@@ -52,7 +52,7 @@ async def version():
     return {"version": os.getenv("DEPLOY_TIMESTAMP", "unknown"), "service": os.getenv("APP_NAME", "bidding")}
 
 
-from api.v1 import bids, checklist, comments, documents, internal, library, matrix  # noqa: E402
+from api.v1 import bids, checklist, comments, config, documents, internal, library, matrix, stats  # noqa: E402
 
 for r in (
     internal.router,
@@ -62,6 +62,8 @@ for r in (
     comments.router,
     library.router,
     matrix.router,
+    config.router,
+    stats.router,
 ):
     app.include_router(r, prefix="/api/v1")
 

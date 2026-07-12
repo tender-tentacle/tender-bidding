@@ -1,12 +1,14 @@
-"""Decision-matrix service: upload→categories, per-bid AI evaluation with human
-override, and the weighted bid/no-bid verdict.
+"""Decision-matrix service: upload→categories, expert backend (edit + versioned
+history, enriching-config style), per-bid AI evaluation with human override, and
+the weighted bid/no-bid verdict.
 
 Verdict rule (as specified by the expert user): each category is scored 0–5,
 carries a weight 1–5, and the tender is a BID when
 Σ(effective_score × weight) ≥ threshold — where the effective score is the
 human override when present, else the AI score. Every AI score keeps its
-rationale; every override keeps who/why. The evaluation is the strategic layer
-on top of the operational readiness score.
+rationale; every override keeps who/why; every matrix change is a version with
+a history snapshot. Each category carries a `headline` and the expert's prose
+`explanation` — the explanation is what the AI grounds its scoring on.
 """
 
 from __future__ import annotations
@@ -15,11 +17,18 @@ from typing import Any
 
 from core.ai_client import get_ai_client
 from core.portal_intel import get_portal_intel_client
-from models.bid import Bid, BidCategoryRating, DecisionCategory, DecisionMatrix
-from sqlalchemy import select
+from models.bid import (
+    Bid,
+    BidCategoryRating,
+    DecisionCategory,
+    DecisionMatrix,
+    DecisionMatrixHistory,
+)
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 SCORE_RANGE = range(0, 6)  # 0–5
+WEIGHT_RANGE = range(1, 6)  # 1–5
 
 
 async def get_active_matrix(db: AsyncSession) -> DecisionMatrix | None:
@@ -32,6 +41,36 @@ async def get_active_matrix(db: AsyncSession) -> DecisionMatrix | None:
         .scalars()
         .first()
     )
+
+
+def matrix_dict(matrix: DecisionMatrix) -> dict[str, Any]:
+    return {
+        "id": matrix.id,
+        "name": matrix.name,
+        "threshold": matrix.threshold,
+        "version": matrix.version,
+        "source_filename": matrix.source_filename,
+        "uploaded_by": matrix.uploaded_by,
+        "max_points": 5 * sum(c.weight for c in matrix.categories),
+        "categories": [
+            {"id": c.id, "headline": c.headline, "explanation": c.explanation, "weight": c.weight}
+            for c in matrix.categories
+        ],
+    }
+
+
+async def _snapshot(db: AsyncSession, matrix: DecisionMatrix, *, change_summary: str, created_by: str | None) -> None:
+    """Version bump + history entry (same shape as the enriching config API)."""
+    db.add(
+        DecisionMatrixHistory(
+            matrix_id=matrix.id,
+            version=matrix.version,
+            change_summary=change_summary,
+            created_by=created_by,
+            data=matrix_dict(matrix),
+        )
+    )
+    matrix.version += 1
 
 
 async def create_matrix_from_upload(
@@ -51,8 +90,8 @@ async def create_matrix_from_upload(
         active=True,
         categories=[
             DecisionCategory(
-                name=c["name"],
-                description=c.get("description"),
+                headline=c["headline"],
+                explanation=c.get("explanation"),
                 weight=min(5, max(1, int(c.get("weight", 3)))),
                 order=i,
             )
@@ -61,7 +100,126 @@ async def create_matrix_from_upload(
     )
     db.add(matrix)
     await db.flush()
+    await _snapshot(db, matrix, change_summary=f"Uploaded from {filename or 'document'}", created_by=uploaded_by)
+    await db.flush()
     return matrix
+
+
+# ── Expert backend (edit + history) ─────────────────────────────────────────
+
+
+async def update_matrix(
+    db: AsyncSession,
+    matrix: DecisionMatrix,
+    *,
+    name: str | None,
+    threshold: int | None,
+    change_summary: str | None,
+    actor: str | None,
+) -> DecisionMatrix:
+    if threshold is not None:
+        max_points = 5 * sum(c.weight for c in matrix.categories)
+        if not 0 <= threshold <= max_points:
+            raise ValueError(f"threshold must be between 0 and {max_points} (5 × Σ weights)")
+        matrix.threshold = threshold
+    if name:
+        matrix.name = name[:255]
+    await _snapshot(db, matrix, change_summary=change_summary or "Matrix settings updated", created_by=actor)
+    await db.flush()
+    return matrix
+
+
+async def add_category(
+    db: AsyncSession,
+    matrix: DecisionMatrix,
+    *,
+    headline: str,
+    explanation: str | None,
+    weight: int,
+    actor: str | None,
+) -> DecisionCategory:
+    if weight not in WEIGHT_RANGE:
+        raise ValueError("weight must be between 1 and 5")
+    if not headline.strip():
+        raise ValueError("headline is required")
+    cat = DecisionCategory(
+        headline=headline.strip()[:255],
+        explanation=(explanation or "").strip() or None,
+        weight=weight,
+        order=len(matrix.categories),
+    )
+    matrix.categories.append(cat)
+    await _snapshot(db, matrix, change_summary=f"Added category '{cat.headline}'", created_by=actor)
+    await db.flush()
+    return cat
+
+
+async def update_category(
+    db: AsyncSession,
+    matrix: DecisionMatrix,
+    category_id: str,
+    *,
+    headline: str | None,
+    explanation: str | None,
+    weight: int | None,
+    actor: str | None,
+) -> DecisionCategory:
+    cat = next((c for c in matrix.categories if c.id == category_id), None)
+    if not cat:
+        raise LookupError("Category not found on the active matrix")
+    if weight is not None:
+        if weight not in WEIGHT_RANGE:
+            raise ValueError("weight must be between 1 and 5")
+        cat.weight = weight
+    if headline is not None:
+        if not headline.strip():
+            raise ValueError("headline cannot be empty")
+        cat.headline = headline.strip()[:255]
+    if explanation is not None:
+        cat.explanation = explanation.strip() or None
+    await _snapshot(db, matrix, change_summary=f"Updated category '{cat.headline}'", created_by=actor)
+    await db.flush()
+    return cat
+
+
+async def delete_category(db: AsyncSession, matrix: DecisionMatrix, category_id: str, *, actor: str | None) -> None:
+    cat = next((c for c in matrix.categories if c.id == category_id), None)
+    if not cat:
+        raise LookupError("Category not found on the active matrix")
+    # Ratings of a removed criterion are meaningless — drop them with it.
+    await db.execute(delete(BidCategoryRating).where(BidCategoryRating.category_id == category_id))
+    headline = cat.headline
+    matrix.categories.remove(cat)
+    await _snapshot(db, matrix, change_summary=f"Removed category '{headline}'", created_by=actor)
+    await db.flush()
+
+
+async def get_history(db: AsyncSession, matrix: DecisionMatrix, limit: int = 20) -> list[dict[str, Any]]:
+    rows = (
+        (
+            await db.execute(
+                select(DecisionMatrixHistory)
+                .where(DecisionMatrixHistory.matrix_id == matrix.id)
+                .order_by(DecisionMatrixHistory.version.desc())
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        {
+            "version": h.version,
+            "change_summary": h.change_summary,
+            "created_by": h.created_by,
+            "created_at": h.created_at,
+            "data": h.data,
+        }
+        for h in rows
+    ]
+
+
+# ── Per-bid evaluation ───────────────────────────────────────────────────────
 
 
 def _bid_text(bid: Bid) -> str:
@@ -92,7 +250,7 @@ async def evaluate_bid(db: AsyncSession, bid: Bid) -> dict[str, Any]:
     ai = get_ai_client()
     for cat in matrix.categories:
         result = await ai.score_category(
-            {"name": cat.name, "description": cat.description, "weight": cat.weight}, text, intel
+            {"headline": cat.headline, "explanation": cat.explanation, "weight": cat.weight}, text, intel
         )
         rating = existing.get(cat.id)
         if rating:
@@ -154,8 +312,8 @@ async def get_evaluation(db: AsyncSession, bid: Bid, intel: dict[str, Any] | Non
         rows.append(
             {
                 "category_id": cat.id,
-                "name": cat.name,
-                "description": cat.description,
+                "headline": cat.headline,
+                "explanation": cat.explanation,
                 "weight": cat.weight,
                 "ai_score": r.ai_score if r else None,
                 "ai_rationale": r.ai_rationale if r else None,
@@ -171,6 +329,7 @@ async def get_evaluation(db: AsyncSession, bid: Bid, intel: dict[str, Any] | Non
     return {
         "matrix_id": matrix.id,
         "matrix_name": matrix.name,
+        "matrix_version": matrix.version,
         "threshold": matrix.threshold,
         "max_points": max_points,
         "total_points": total if scored_any else None,

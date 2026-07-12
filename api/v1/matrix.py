@@ -12,27 +12,33 @@ from core.database import get_db
 from core.portal_intel import get_portal_intel_client
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from models.bid import Bid
-from schemas import RatingOverrideIn
+from schemas import CategoryIn, CategoryUpdateIn, MatrixUpdateIn, RatingOverrideIn
 from services import activity
 from services.decision_matrix import (
+    add_category,
     create_matrix_from_upload,
+    delete_category,
     evaluate_bid,
     get_active_matrix,
     get_evaluation,
+    get_history,
+    matrix_dict,
     override_rating,
+    update_category,
+    update_matrix,
 )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["decision-matrix"])
 
-_UPLOAD_ROLES = {"lead", "admin"}
+_EXPERT_ROLES = {"lead", "admin"}
 
 
 def _require_expert(request: Request) -> str | None:
     role = (request.headers.get("X-User-Role") or "").lower()
-    if not MOCK_MODE and role not in _UPLOAD_ROLES:
-        raise HTTPException(status_code=403, detail=f"Uploading the decision matrix requires one of {_UPLOAD_ROLES}")
+    if not MOCK_MODE and role not in _EXPERT_ROLES:
+        raise HTTPException(status_code=403, detail=f"Editing the decision matrix requires one of {_EXPERT_ROLES}")
     return request.headers.get("X-User-ID")
 
 
@@ -43,17 +49,11 @@ async def _load_bid(db: AsyncSession, bid_id: str) -> Bid:
     return bid
 
 
-def _matrix_out(matrix) -> dict:
-    return {
-        "id": matrix.id,
-        "name": matrix.name,
-        "threshold": matrix.threshold,
-        "source_filename": matrix.source_filename,
-        "uploaded_by": matrix.uploaded_by,
-        "categories": [
-            {"id": c.id, "name": c.name, "description": c.description, "weight": c.weight} for c in matrix.categories
-        ],
-    }
+async def _active_matrix_or_404(db: AsyncSession):
+    matrix = await get_active_matrix(db)
+    if not matrix:
+        raise HTTPException(status_code=404, detail="No active decision matrix — upload one first.")
+    return matrix
 
 
 @router.post("/matrix", status_code=201)
@@ -68,15 +68,85 @@ async def upload_matrix(
     markdown = data.decode("utf-8", errors="ignore")
     matrix = await create_matrix_from_upload(db, markdown=markdown, filename=file.filename, uploaded_by=actor)
     await db.commit()
-    return _matrix_out(matrix)
+    return matrix_dict(matrix)
 
 
 @router.get("/matrix")
 async def get_matrix(db: AsyncSession = Depends(get_db)):
-    matrix = await get_active_matrix(db)
-    if not matrix:
-        raise HTTPException(status_code=404, detail="No active decision matrix — upload one first.")
-    return _matrix_out(matrix)
+    return matrix_dict(await _active_matrix_or_404(db))
+
+
+# ── Expert backend (enriching-config style: versioned edits + history) ──────
+
+
+@router.put("/matrix")
+async def edit_matrix(body: MatrixUpdateIn, request: Request, db: AsyncSession = Depends(get_db)):
+    """Update matrix settings (name, threshold). Every change is a new version."""
+    actor = _require_expert(request)
+    matrix = await _active_matrix_or_404(db)
+    try:
+        await update_matrix(
+            db, matrix, name=body.name, threshold=body.threshold, change_summary=body.change_summary, actor=actor
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    await db.commit()
+    return matrix_dict(matrix)
+
+
+@router.post("/matrix/categories", status_code=201)
+async def create_category(body: CategoryIn, request: Request, db: AsyncSession = Depends(get_db)):
+    actor = _require_expert(request)
+    matrix = await _active_matrix_or_404(db)
+    try:
+        await add_category(
+            db, matrix, headline=body.headline, explanation=body.explanation, weight=body.weight, actor=actor
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    await db.commit()
+    return matrix_dict(matrix)
+
+
+@router.patch("/matrix/categories/{category_id}")
+async def edit_category(category_id: str, body: CategoryUpdateIn, request: Request, db: AsyncSession = Depends(get_db)):
+    actor = _require_expert(request)
+    matrix = await _active_matrix_or_404(db)
+    try:
+        await update_category(
+            db,
+            matrix,
+            category_id,
+            headline=body.headline,
+            explanation=body.explanation,
+            weight=body.weight,
+            actor=actor,
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    await db.commit()
+    return matrix_dict(matrix)
+
+
+@router.delete("/matrix/categories/{category_id}")
+async def remove_category(category_id: str, request: Request, db: AsyncSession = Depends(get_db)):
+    actor = _require_expert(request)
+    matrix = await _active_matrix_or_404(db)
+    try:
+        await delete_category(db, matrix, category_id, actor=actor)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    await db.commit()
+    return matrix_dict(matrix)
+
+
+@router.get("/matrix/history")
+async def matrix_history(db: AsyncSession = Depends(get_db)):
+    """Version history of the active matrix (who changed what, when)."""
+    matrix = await _active_matrix_or_404(db)
+    return await get_history(db, matrix)
 
 
 @router.post("/bids/{bid_id}/matrix-evaluation")

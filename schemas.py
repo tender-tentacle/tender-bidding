@@ -210,5 +210,6 @@ class ActivityOut(BaseModel):
 
 class EnrichBiddingPayload(BaseModel):
     """Trigger payload for pulling and AI extraction of bidding documents & deadlines."""
+
     source_id: str
     source_kind: str = "tender"  # tender | group

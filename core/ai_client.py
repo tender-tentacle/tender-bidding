@@ -228,34 +228,91 @@ class MockAIClient(AIClient):
 
     async def extract_required_documents(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         return [
-            {"document_name": "Handelsregisterauszug", "description": "Aktueller Auszug aus dem Handelsregister (nicht älter als 3 Monate).", "category": "suitability"},
-            {"document_name": "Referenzen", "description": "Mindestens 3 Referenzprojekte über vergleichbare Dienstleistungen aus den letzten 3 Jahren.", "category": "suitability"},
-            {"document_name": "Projektteam CVs", "description": "Lebensläufe der vorgesehenen Schlüsselpersonen mit Nachweis der geforderten Zertifizierungen.", "category": "suitability"},
-            {"document_name": "Haftpflichtversicherung", "description": "Nachweis einer bestehenden Betriebshaftpflichtversicherung mit ausreichender Deckung.", "category": "suitability"},
-            {"document_name": "Eigenerklärung Ausschlussgründe", "description": "Eigenerklärung, dass keine Ausschlussgründe nach VgV vorliegen.", "category": "self-declaration"},
-            {"document_name": "Eigenerklärung Mindestlohn", "description": "Eigenerklärung zur Einhaltung des Mindestlohngesetzes (MiLoG).", "category": "self-declaration"},
-            {"document_name": "Preisblatt", "description": "Vollständig ausgefülltes Preisblatt im PDF- und GAEB-Format.", "category": "proposal"},
-            {"document_name": "Leistungskonzept", "description": "Detaillierte Beschreibung des angebotenen Konzepts zur Umsetzung des Leistungsverzeichnisses.", "category": "proposal"}
+            {
+                "document_name": "Handelsregisterauszug",
+                "description": "Aktueller Auszug aus dem Handelsregister (nicht älter als 3 Monate).",
+                "category": "suitability",
+            },
+            {
+                "document_name": "Referenzen",
+                "description": "Mindestens 3 Referenzprojekte über vergleichbare Dienstleistungen aus den letzten 3 Jahren.",
+                "category": "suitability",
+            },
+            {
+                "document_name": "Projektteam CVs",
+                "description": "Lebensläufe der vorgesehenen Schlüsselpersonen mit Nachweis der geforderten Zertifizierungen.",
+                "category": "suitability",
+            },
+            {
+                "document_name": "Haftpflichtversicherung",
+                "description": "Nachweis einer bestehenden Betriebshaftpflichtversicherung mit ausreichender Deckung.",
+                "category": "suitability",
+            },
+            {
+                "document_name": "Eigenerklärung Ausschlussgründe",
+                "description": "Eigenerklärung, dass keine Ausschlussgründe nach VgV vorliegen.",
+                "category": "self-declaration",
+            },
+            {
+                "document_name": "Eigenerklärung Mindestlohn",
+                "description": "Eigenerklärung zur Einhaltung des Mindestlohngesetzes (MiLoG).",
+                "category": "self-declaration",
+            },
+            {
+                "document_name": "Preisblatt",
+                "description": "Vollständig ausgefülltes Preisblatt im PDF- und GAEB-Format.",
+                "category": "proposal",
+            },
+            {
+                "document_name": "Leistungskonzept",
+                "description": "Detaillierte Beschreibung des angebotenen Konzepts zur Umsetzung des Leistungsverzeichnisses.",
+                "category": "proposal",
+            },
         ]
 
     async def extract_bidding_deadlines(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
-        from datetime import datetime, UTC, timedelta
+        from datetime import UTC, datetime, timedelta
+
         now = datetime.now(UTC)
         out = []
         sub_date = snapshot.get("deadline_at")
         if sub_date:
             out.append({"kind": "submission", "date": sub_date, "source_link": "notice"})
         else:
-            out.append({"kind": "submission", "date": (now + timedelta(days=30)).isoformat().replace("+00:00", "Z"), "source_link": "notice"})
+            out.append(
+                {
+                    "kind": "submission",
+                    "date": (now + timedelta(days=30)).isoformat().replace("+00:00", "Z"),
+                    "source_link": "notice",
+                }
+            )
 
         q_date = snapshot.get("questions_deadline_at") or snapshot.get("questions_deadline")
         if q_date:
             out.append({"kind": "questions", "date": q_date, "source_link": "notice"})
         else:
-            out.append({"kind": "questions", "date": (now + timedelta(days=15)).isoformat().replace("+00:00", "Z"), "source_link": "notice"})
+            out.append(
+                {
+                    "kind": "questions",
+                    "date": (now + timedelta(days=15)).isoformat().replace("+00:00", "Z"),
+                    "source_link": "notice",
+                }
+            )
 
-        out.append({"kind": "registration", "date": (now + timedelta(days=10)).isoformat().replace("+00:00", "Z"), "source_link": "notice"})
-        out.append({"kind": "validity", "date": (now + timedelta(days=90)).isoformat().replace("+00:00", "Z"), "source_link": "notice"})
+        out.append(
+            {
+                "kind": "registration",
+                "date": (now + timedelta(days=10)).isoformat().replace("+00:00", "Z"),
+                "source_link": "notice",
+            }
+        )
+        out.append(
+            {
+                "kind": "validity",
+                "date": (now + timedelta(days=90)).isoformat().replace("+00:00", "Z"),
+                "source_link": "notice",
+            }
+        )
         return out
 
     async def verify_document(self, requirement: str, doc_markdown: str) -> dict[str, Any]:
@@ -286,6 +343,7 @@ class MockAIClient(AIClient):
             "ai_verification": None,
         }
 
+
 REQUIRED_DOCUMENTS_PROMPT = """
 Du bist ein Experte für öffentliche Ausschreibungen.
 Analysiere die bereitgestellten Ausschreibungsdaten (und eventuelle Dokumententexte) und extrahiere eine Liste aller erforderlichen Nachweise und Unterlagen (Required Documents), die der Bieter einreichen muss.
@@ -315,8 +373,26 @@ Struktur:
 """.strip()
 
 
+async def _configured_prompt(category: str) -> str:
+    """Expert-edited template from the config API, or the hardcoded default."""
+    # Function-level imports: services.prompt_config imports this module's defaults.
+    from services.prompt_config import current_template
+
+    from core.database import SessionLocal
+
+    try:
+        async with SessionLocal() as db:
+            return await current_template(db, category)
+    except Exception as e:
+        logger.warning(f"Could not read configured prompt for {category}; using default: {e}")
+        return {"bidding_required_documents": REQUIRED_DOCUMENTS_PROMPT, "bidding_deadlines": DEADLINES_PROMPT}[
+            category
+        ]
+
+
 async def _sync_prompt(prompt_id: str, system_message: str):
     import httpx
+
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             await client.post(
@@ -329,8 +405,8 @@ async def _sync_prompt(prompt_id: str, system_message: str):
                     "version": "1.0.0",
                     "temperature": 0.1,
                     "model": "gpt-4o",
-                    "description": f"Seeded from tender-bidding for {prompt_id}"
-                }
+                    "description": f"Seeded from tender-bidding for {prompt_id}",
+                },
             )
     except Exception as e:
         logger.warning(f"Failed to sync prompt {prompt_id} to AI service: {e}")
@@ -351,9 +427,10 @@ class RealAIClient(AIClient):
 
     async def extract_required_documents(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         import httpx
+
         try:
-            # Sync the prompt dynamically to AI connector
-            await _sync_prompt("bidding_required_documents", REQUIRED_DOCUMENTS_PROMPT)
+            # Sync the expert-edited prompt (falls back to the default) to the AI connector.
+            await _sync_prompt("bidding_required_documents", await _configured_prompt("bidding_required_documents"))
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(
                     f"{AI_URL}/api/inference",
@@ -362,8 +439,8 @@ class RealAIClient(AIClient):
                         "tender_data": snapshot,
                         "output_structure": {
                             "documents": [{"document_name": "str", "description": "str", "category": "str"}]
-                        }
-                    }
+                        },
+                    },
                 )
                 if resp.status_code == 200:
                     data = resp.json()
@@ -377,19 +454,18 @@ class RealAIClient(AIClient):
 
     async def extract_bidding_deadlines(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         import httpx
+
         try:
-            # Sync the prompt dynamically to AI connector
-            await _sync_prompt("bidding_deadlines", DEADLINES_PROMPT)
+            # Sync the expert-edited prompt (falls back to the default) to the AI connector.
+            await _sync_prompt("bidding_deadlines", await _configured_prompt("bidding_deadlines"))
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(
                     f"{AI_URL}/api/inference",
                     json={
                         "prompt_id": "bidding_deadlines",
                         "tender_data": snapshot,
-                        "output_structure": {
-                            "deadlines": [{"kind": "str", "date": "str", "source_link": "str"}]
-                        }
-                    }
+                        "output_structure": {"deadlines": [{"kind": "str", "date": "str", "source_link": "str"}]},
+                    },
                 )
                 if resp.status_code == 200:
                     data = resp.json()

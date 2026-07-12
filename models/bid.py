@@ -48,6 +48,9 @@ class Bid(Base):
     # Source in the enriching domain (tender external_id or group id) — idempotency key.
     source_ref: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     source_kind: Mapped[str] = mapped_column(String(20), default="tender")  # tender | group
+    # Enriching-domain UUID (tender/group id). source_ref stays the idempotency
+    # key (external_id); this lets the dashboard look bids up by either.
+    enriching_id: Mapped[str | None] = mapped_column(String(64), index=True)
     lots_in_scope: Mapped[list | None] = mapped_column(JSON, default=list)
     cpv_codes: Mapped[list | None] = mapped_column(JSON, default=list)  # from the tender snapshot
 
@@ -229,6 +232,34 @@ class DecisionCategory(Base):
     order: Mapped[int] = mapped_column(Integer, default=0)
 
     matrix: Mapped[DecisionMatrix] = relationship(back_populates="categories")
+
+
+class PromptConfig(Base):
+    """Editable AI prompt per extraction category (enriching-config pattern).
+
+    Categories: bidding_required_documents | bidding_deadlines. The RealAIClient
+    syncs the current template to the AI connector before each inference; the
+    hardcoded defaults apply until an expert edits them.
+    """
+
+    __tablename__ = "bid_prompt_config"
+
+    category: Mapped[str] = mapped_column(String(100), primary_key=True)
+    prompt_template: Mapped[str] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class PromptConfigHistory(Base):
+    __tablename__ = "bid_prompt_config_history"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    category: Mapped[str] = mapped_column(String(100), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    prompt_template: Mapped[str] = mapped_column(Text)
+    change_summary: Mapped[str | None] = mapped_column(String(500))
+    created_by: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)
 
 
 class DecisionMatrixHistory(Base):

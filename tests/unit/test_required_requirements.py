@@ -28,13 +28,10 @@ async def test_extract_bidding_deadlines_fallback():
 @pytest.mark.asyncio
 async def test_extract_bidding_deadlines_from_snapshot():
     ai = MockAIClient()
-    snapshot = {
-        "deadline_at": "2026-09-30T12:00:00Z",
-        "questions_deadline_at": "2026-09-15T18:00:00Z"
-    }
+    snapshot = {"deadline_at": "2026-09-30T12:00:00Z", "questions_deadline_at": "2026-09-15T18:00:00Z"}
     deadlines = await ai.extract_bidding_deadlines(snapshot)
     sub = next(d for d in deadlines if d["kind"] == "submission")
     q = next(d for d in deadlines if d["kind"] == "questions")
-    
+
     assert sub["date"] == "2026-09-30T12:00:00Z"
     assert q["date"] == "2026-09-15T18:00:00Z"

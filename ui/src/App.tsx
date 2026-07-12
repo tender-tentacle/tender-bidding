@@ -14,8 +14,13 @@ import {
   type ChecklistItem,
   type KeyDate,
   type LibrarySearch,
+  type Matrix,
+  type MatrixCategory,
   type MatrixEvaluation,
+  type MatrixHistoryEntry,
+  type PromptConfig,
   type Recommendation,
+  type ServiceStats,
 } from "./api";
 
 const KIND_LABEL: Record<string, string> = {
@@ -117,6 +122,7 @@ function StatusTag({ status }: { status: string }) {
 export function App() {
   const [bids, setBids] = useState<BidSummary[]>([]);
   const [selected, setSelected] = useState<BidDetail | null>(null);
+  const [view, setView] = useState<"library" | "expert">("library");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -164,17 +170,36 @@ export function App() {
             <PHeading size="small" tag="h2" className="section-label">
               Bids
             </PHeading>
-            <PButton
-              type="button"
-              variant="secondary"
-              icon="search"
-              compact={true}
-              hideLabel={true}
-              onClick={() => setSelected(null)}
-              data-testid="open-library"
-            >
-              Document Library
-            </PButton>
+            <div className="bid-list-actions">
+              <PButton
+                type="button"
+                variant="secondary"
+                icon="search"
+                compact={true}
+                hideLabel={true}
+                onClick={() => {
+                  setSelected(null);
+                  setView("library");
+                }}
+                data-testid="open-library"
+              >
+                Document Library
+              </PButton>
+              <PButton
+                type="button"
+                variant="secondary"
+                icon="wrench"
+                compact={true}
+                hideLabel={true}
+                onClick={() => {
+                  setSelected(null);
+                  setView("expert");
+                }}
+                data-testid="open-expert"
+              >
+                Expert Backend
+              </PButton>
+            </div>
           </div>
           <div data-testid="bid-list">
             {bids.map((b) => (
@@ -209,7 +234,8 @@ export function App() {
         </aside>
 
         <main className="workspace">
-          {!selected && <Library />}
+          {!selected && view === "expert" && <ExpertBackend />}
+          {!selected && view === "library" && <Library />}
           {selected && (
             <Workspace
               bid={selected}
@@ -222,6 +248,383 @@ export function App() {
             />
           )}
         </main>
+      </div>
+    </div>
+  );
+}
+
+const WEIGHT_CHOICES = ["1", "2", "3", "4", "5"];
+
+const PROMPT_LABEL: Record<string, string> = {
+  bidding_required_documents: "Requirement detection prompt",
+  bidding_deadlines: "Date detection prompt",
+};
+
+function KpiTiles() {
+  const [stats, setStats] = useState<ServiceStats | null>(null);
+
+  useEffect(() => {
+    api.getStats().then(setStats).catch(() => setStats(null));
+  }, []);
+
+  if (!stats) return null;
+  const tiles: [string, string | number][] = [
+    ["Bids", stats.bids_total],
+    ["Exploring", stats.bids_by_status["exploring"] ?? 0],
+    ["Won", stats.bids_by_status["won"] ?? 0],
+    ["Requirements detected", stats.requirements_detected],
+    ["Checklist open", `${stats.checklist_items_open}/${stats.checklist_items_total}`],
+    ["Deadlines ≤ 14d", stats.deadlines_due_14d],
+    ["Corpus docs", stats.corpus_documents],
+    ["Evaluated bids", stats.matrix_evaluated_bids],
+    ["Human overrides", stats.human_overrides],
+    ["Activity events", stats.activity_events],
+  ];
+  return (
+    <div className="kpi-row" data-testid="expert-kpis">
+      {tiles.map(([label, value]) => (
+        <div key={label} className="kpi-tile">
+          <span className="kpi-value">{value}</span>
+          <PText size="xs" color="contrast-medium">
+            {label}
+          </PText>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PromptsEditor() {
+  const [configs, setConfigs] = useState<Record<string, PromptConfig>>({});
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .getConfigs()
+      .then((c) => {
+        setConfigs(c);
+        setDrafts(Object.fromEntries(Object.entries(c).map(([k, v]) => [k, v.prompt_template])));
+      })
+      .catch(() => setConfigs({}));
+  }, []);
+
+  async function save(category: string) {
+    setMsg(null);
+    try {
+      const updated = await api.updateConfig(category, {
+        prompt_template: drafts[category],
+        change_summary: "Edited in expert backend",
+      });
+      setConfigs({ ...configs, [category]: updated });
+      setMsg(`Prompt '${PROMPT_LABEL[category] ?? category}' saved (v${updated.version}).`);
+    } catch (e) {
+      setMsg(`Failed: ${String(e)}`);
+    }
+  }
+
+  return (
+    <div className="expert-prompts" data-testid="expert-prompts">
+      <div className="kind-head">
+        <PHeading size="small" tag="h3">
+          AI Prompts
+        </PHeading>
+        <PText size="xs" color="contrast-medium" tag="span">
+          Synced to the AI connector before each extraction
+        </PText>
+      </div>
+      {msg && (
+        <div className="gate">
+          <PInlineNotification
+            state={msg.startsWith("Failed") ? "error" : "success"}
+            heading="Prompt config"
+            description={msg}
+            dismissButton={false}
+          />
+        </div>
+      )}
+      {Object.entries(configs).map(([category, cfg]) => (
+        <div key={category} className="expert-prompt" data-testid="expert-prompt">
+          <div className="expert-prompt-head">
+            <PText size="small" weight="semibold" tag="span">
+              {PROMPT_LABEL[category] ?? category}
+            </PText>
+            <PTag variant="secondary" compact={true}>
+              {cfg.is_default ? "default" : `v${cfg.version}`}
+            </PTag>
+          </div>
+          <textarea
+            className="lib-input expert-prompt-text"
+            rows={5}
+            value={drafts[category] ?? ""}
+            onChange={(e) => setDrafts({ ...drafts, [category]: e.target.value })}
+          />
+          <PButton type="button" variant="primary" compact={true} onClick={() => save(category)}>
+            Save prompt
+          </PButton>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ExpertBackend() {
+  const [matrix, setMatrix] = useState<Matrix | null>(null);
+  const [history, setHistory] = useState<MatrixHistoryEntry[]>([]);
+  const [missing, setMissing] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [threshold, setThreshold] = useState("");
+  const [name, setName] = useState("");
+  const [draft, setDraft] = useState<{ headline: string; explanation: string; weight: string }>({
+    headline: "",
+    explanation: "",
+    weight: "3",
+  });
+
+  const load = useCallback(() => {
+    api
+      .getMatrix()
+      .then((m) => {
+        setMatrix(m);
+        setMissing(false);
+        setThreshold(String(m.threshold));
+        setName(m.name);
+      })
+      .catch(() => setMissing(true));
+    api.getMatrixHistory().then(setHistory).catch(() => setHistory([]));
+  }, []);
+
+  useEffect(load, [load]);
+
+  async function act(fn: () => Promise<Matrix>, okMsg: string) {
+    setMsg(null);
+    try {
+      setMatrix(await fn());
+      setMsg(okMsg);
+      api.getMatrixHistory().then(setHistory).catch(() => {});
+    } catch (e) {
+      setMsg(`Failed: ${String(e)}`);
+    }
+  }
+
+  if (missing) {
+    return (
+      <div data-testid="expert-backend">
+        <PHeading size="large" tag="h1">
+          Expert Backend
+        </PHeading>
+        <PText color="contrast-medium">
+          No active decision matrix. Upload one in the Document Library to start.
+        </PText>
+        <KpiTiles />
+        <PromptsEditor />
+      </div>
+    );
+  }
+
+  return (
+    <div data-testid="expert-backend">
+      <div className="ws-header">
+        <PHeading size="large" tag="h1">
+          Expert Backend — Decision Matrix
+        </PHeading>
+        <PText size="small" color="contrast-medium">
+          Tune the bid/no-bid policy: threshold, categories, weights. Each category needs a headline and an
+          explanation — the explanation is what the AI grounds its scoring on. Every change is versioned.
+        </PText>
+      </div>
+
+      <KpiTiles />
+
+      {msg && (
+        <div className="gate" data-testid="expert-msg">
+          <PInlineNotification
+            state={msg.startsWith("Failed") ? "error" : "success"}
+            heading="Decision matrix"
+            description={msg}
+            dismissButton={false}
+          />
+        </div>
+      )}
+
+      {matrix && (
+        <>
+          <div className="expert-settings">
+            <label className="expert-field">
+              <PText size="xs" color="contrast-medium">
+                Matrix name
+              </PText>
+              <input className="lib-input" value={name} onChange={(e) => setName(e.target.value)} />
+            </label>
+            <label className="expert-field">
+              <PText size="xs" color="contrast-medium">
+                Threshold (max {matrix.max_points} = 5 × Σ weights)
+              </PText>
+              <input
+                className="lib-input"
+                type="number"
+                value={threshold}
+                onChange={(e) => setThreshold(e.target.value)}
+                data-testid="expert-threshold"
+              />
+            </label>
+            <PTag variant="secondary" compact={true}>
+              v{matrix.version}
+            </PTag>
+            <PButton
+              type="button"
+              variant="primary"
+              compact={true}
+              onClick={() =>
+                act(
+                  () => api.updateMatrix({ name, threshold: Number(threshold), change_summary: "Edited in expert backend" }),
+                  "Settings saved.",
+                )
+              }
+              data-testid="expert-save"
+            >
+              Save settings
+            </PButton>
+          </div>
+
+          <div className="matrix-rows expert-rows" data-testid="expert-categories">
+            {matrix.categories.map((c) => (
+              <ExpertCategoryRow key={c.id} category={c} onAct={act} />
+            ))}
+          </div>
+
+          <div className="expert-add">
+            <input
+              className="lib-input"
+              placeholder="New category headline"
+              value={draft.headline}
+              onChange={(e) => setDraft({ ...draft, headline: e.target.value })}
+              data-testid="expert-new-headline"
+            />
+            <input
+              className="lib-input lib-q"
+              placeholder="Explanation — the expert's intent, in prose (the AI scores against this)"
+              value={draft.explanation}
+              onChange={(e) => setDraft({ ...draft, explanation: e.target.value })}
+            />
+            <select
+              className="lib-input"
+              value={draft.weight}
+              onChange={(e) => setDraft({ ...draft, weight: e.target.value })}
+            >
+              {WEIGHT_CHOICES.map((w) => (
+                <option key={w} value={w}>
+                  w {w}
+                </option>
+              ))}
+            </select>
+            <PButton
+              type="button"
+              variant="secondary"
+              icon="add"
+              compact={true}
+              onClick={() =>
+                act(
+                  () =>
+                    api.addMatrixCategory({
+                      headline: draft.headline,
+                      explanation: draft.explanation || undefined,
+                      weight: Number(draft.weight),
+                    }),
+                  "Category added.",
+                ).then(() => setDraft({ headline: "", explanation: "", weight: "3" }))
+              }
+              data-testid="expert-add"
+            >
+              Add category
+            </PButton>
+          </div>
+
+          <div className="expert-history" data-testid="expert-history">
+            <div className="kind-head">
+              <PHeading size="small" tag="h3">
+                History
+              </PHeading>
+            </div>
+            <ul>
+              {history.map((h) => (
+                <li key={h.version}>
+                  <PTag variant="secondary" compact={true}>
+                    v{h.version}
+                  </PTag>
+                  <PText size="xs" tag="span">
+                    {h.change_summary}
+                  </PText>
+                  <PText size="xs" color="contrast-medium" tag="span">
+                    {h.created_by ?? "—"} · {new Date(h.created_at).toLocaleString()}
+                  </PText>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <PromptsEditor />
+        </>
+      )}
+    </div>
+  );
+}
+
+function ExpertCategoryRow({
+  category,
+  onAct,
+}: {
+  category: MatrixCategory;
+  onAct: (fn: () => Promise<Matrix>, okMsg: string) => Promise<void>;
+}) {
+  const [headline, setHeadline] = useState(category.headline);
+  const [explanation, setExplanation] = useState(category.explanation ?? "");
+  const [weight, setWeight] = useState(String(category.weight));
+  const dirty =
+    headline !== category.headline || explanation !== (category.explanation ?? "") || weight !== String(category.weight);
+
+  return (
+    <div className="matrix-row expert-row" data-testid="expert-category">
+      <input className="lib-input" value={headline} onChange={(e) => setHeadline(e.target.value)} />
+      <textarea
+        className="lib-input expert-explanation"
+        rows={2}
+        value={explanation}
+        placeholder="Explanation — what should the AI look for?"
+        onChange={(e) => setExplanation(e.target.value)}
+      />
+      <select className="lib-input" value={weight} onChange={(e) => setWeight(e.target.value)}>
+        {WEIGHT_CHOICES.map((w) => (
+          <option key={w} value={w}>
+            w {w}
+          </option>
+        ))}
+      </select>
+      <div className="expert-row-actions">
+        <PButton
+          type="button"
+          variant="primary"
+          compact={true}
+          disabled={!dirty}
+          onClick={() =>
+            onAct(
+              () => api.updateMatrixCategory(category.id, { headline, explanation, weight: Number(weight) }),
+              `Category '${headline}' saved.`,
+            )
+          }
+        >
+          Save
+        </PButton>
+        <PButton
+          type="button"
+          variant="secondary"
+          icon="delete"
+          compact={true}
+          hideLabel={true}
+          onClick={() => onAct(() => api.deleteMatrixCategory(category.id), `Category '${headline}' removed.`)}
+        >
+          Delete
+        </PButton>
       </div>
     </div>
   );
@@ -447,10 +850,10 @@ function MatrixPanel({ bidId, onChanged }: { bidId: string; onChanged: () => voi
       {ev && (
         <div className="matrix-rows">
           {ev.categories.map((c) => (
-            <div key={c.category_id} className="matrix-row" data-testid="matrix-category" title={c.description ?? ""}>
+            <div key={c.category_id} className="matrix-row" data-testid="matrix-category" title={c.explanation ?? ""}>
               <div className="matrix-cell name">
                 <PText size="small" weight="semibold" tag="span">
-                  {c.name}
+                  {c.headline}
                 </PText>
                 <PTag variant="secondary" compact={true}>
                   w {c.weight}

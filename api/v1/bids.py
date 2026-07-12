@@ -23,16 +23,16 @@ from schemas import (
     BidSummary,
     CollaboratorIn,
     CollaboratorOut,
+    EnrichBiddingPayload,
     FormalGate,
     KeyDateOut,
     MatchDecision,
     StatusUpdate,
-    EnrichBiddingPayload,
 )
 from services import activity
 from services.bid_service import snapshot_dict
 from services.checklist_service import build_checklist, formal_gate, regenerate_checklist
-from sqlalchemy import select, delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/bids", tags=["bids"])
@@ -68,6 +68,43 @@ def _days_remaining(dt: datetime | None) -> int | None:
 @router.get("", response_model=list[BidSummary])
 async def list_bids(db: AsyncSession = Depends(get_db)):
     return (await db.execute(select(Bid).order_by(Bid.updated_at.desc()))).scalars().all()
+
+
+@router.get("/by-source/{source_ref}", response_model=BidDetail)
+async def get_bid_by_source(source_ref: str, db: AsyncSession = Depends(get_db)):
+    """Lookup by the enriching-domain id (tender external_id).
+
+    This is the dashboard's entry point: it knows tenders, not bid ids. Accepts
+    either the tender external_id (source_ref) or the enriching UUID (matched
+    against the persisted enriching_id; older bids fall back to a live
+    enriching lookup). 404 when no workspace exists — the dashboard hides the
+    bid-preparation section then (and likewise when this service isn't
+    deployed at all).
+    """
+    bid = (
+        await db.execute(select(Bid).where((Bid.source_ref == source_ref) | (Bid.enriching_id == source_ref)))
+    ).scalar_one_or_none()
+
+    if not bid:
+        # Fallback for bids that predate enriching_id: resolve UUID → external_id
+        # via enriching (best-effort; bidding stays usable when enriching is down).
+        import httpx
+        from core.config import ENRICHING_URL
+        from services.bid_service import get_by_source_ref
+
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(f"{ENRICHING_URL}/api/v1/tenders/{source_ref}")
+                if resp.status_code == 200:
+                    ext_id = resp.json().get("external_id")
+                    if ext_id:
+                        bid = await get_by_source_ref(db, ext_id)
+        except Exception:
+            pass
+
+    if not bid:
+        raise HTTPException(status_code=404, detail=f"No bid workspace for source_ref {source_ref}")
+    return _detail(bid)
 
 
 @router.get("/{bid_id}", response_model=BidDetail)
@@ -268,45 +305,18 @@ async def reject_match(bid_id: str, body: MatchDecision, request: Request, db: A
     return {"checklist_item_id": item.id, "rejected_document_id": body.document_id}
 
 
-@router.get("/by-source/{source_ref}", response_model=BidDetail)
-async def get_bid_by_source(source_ref: str, db: AsyncSession = Depends(get_db)):
-    """Fetch bid workspace by source reference with fallback logic to resolve external_id."""
-    from services.bid_service import get_by_source_ref
-    bid = await get_by_source_ref(db, source_ref)
-    
-    if not bid:
-        # Fallback: Check if source_ref is a tender UUID and resolve its external_id
-        import httpx
-        from core.config import ENRICHING_URL
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.get(f"{ENRICHING_URL}/api/v1/tenders/{source_ref}")
-                if resp.status_code == 200:
-                    tender_data = resp.json()
-                    ext_id = tender_data.get("external_id")
-                    if ext_id:
-                        bid = await get_by_source_ref(db, ext_id)
-        except Exception:
-            pass
-
-    if not bid:
-        raise HTTPException(status_code=404, detail="Bid workspace not found for source_ref")
-    return _detail(bid)
-
-
 @router.post("/enrich", response_model=BidDetail)
 async def enrich_bid_requirements(body: EnrichBiddingPayload, request: Request, db: AsyncSession = Depends(get_db)):
     """Pull tender or group details from tender-enriching, extract required documents/deadlines via AI, and save them."""
     import httpx
-    from core.config import ENRICHING_URL
     from core.ai_client import get_ai_client
-    from models.bid import RequiredDocument, KeyDate
-    from services.bid_service import get_by_source_ref, create_bid_from_snapshot
-    from sqlalchemy import delete
-    
+    from core.config import ENRICHING_URL
+    from models.bid import KeyDate
+    from services.bid_service import create_bid_from_snapshot, get_by_source_ref
+
     source_id = body.source_id
     source_kind = body.source_kind
-    
+
     # 1. Fetch details from tender-enriching
     tender_data = {}
     source_ref = source_id
@@ -314,13 +324,15 @@ async def enrich_bid_requirements(body: EnrichBiddingPayload, request: Request, 
     customer = None
     source_system = "Unknown"
     driver_user_id = None
-    
+
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             if source_kind == "tender":
                 resp = await client.get(f"{ENRICHING_URL}/api/v1/tenders/{source_id}")
                 if resp.status_code != 200:
-                    raise HTTPException(status_code=resp.status_code, detail=f"Failed to fetch tender from enriching: {resp.text}")
+                    raise HTTPException(
+                        status_code=resp.status_code, detail=f"Failed to fetch tender from enriching: {resp.text}"
+                    )
                 tender_data = resp.json()
                 source_ref = tender_data.get("external_id") or source_id
                 title = tender_data.get("title") or title
@@ -330,13 +342,15 @@ async def enrich_bid_requirements(body: EnrichBiddingPayload, request: Request, 
             else:
                 resp = await client.get(f"{ENRICHING_URL}/api/v1/tenders/groups/{source_id}")
                 if resp.status_code != 200:
-                    raise HTTPException(status_code=resp.status_code, detail=f"Failed to fetch group from enriching: {resp.text}")
+                    raise HTTPException(
+                        status_code=resp.status_code, detail=f"Failed to fetch group from enriching: {resp.text}"
+                    )
                 tender_data = resp.json()
                 source_ref = source_id  # groups don't have external_id, use group ID
                 title = tender_data.get("title") or title
                 customer = tender_data.get("customer")
                 source_system = "Group"
-                
+
                 # Combine parsed documents text for the group
                 combined_texts = []
                 for member in tender_data.get("members", []):
@@ -361,9 +375,12 @@ async def enrich_bid_requirements(body: EnrichBiddingPayload, request: Request, 
             "customer": customer,
             "source_system": source_system,
             "driver_user_id": driver_user_id,
-            "provisional": False
+            "provisional": False,
         }
         bid, _ = await create_bid_from_snapshot(db, snapshot)
+    # Remember the enriching-domain UUID so the dashboard can look the bid up
+    # by either id (source_ref = external_id stays the idempotency key).
+    bid.enriching_id = source_id
 
     # 3. Call AI Client to extract required documents & deadlines
     ai = get_ai_client()
@@ -380,12 +397,13 @@ async def enrich_bid_requirements(body: EnrichBiddingPayload, request: Request, 
             bid_id=bid.id,
             document_name=doc.get("document_name") or "Unnamed Document",
             description=doc.get("description"),
-            category=doc.get("category")
+            category=doc.get("category"),
         )
         db.add(db_doc)
 
     for dl in deadlines_payload:
         from datetime import datetime
+
         dt_val = dl.get("date")
         if isinstance(dt_val, str):
             try:
@@ -396,7 +414,7 @@ async def enrich_bid_requirements(body: EnrichBiddingPayload, request: Request, 
             bid_id=bid.id,
             kind=dl.get("kind") or "submission",
             date=dt_val,
-            source_link=dl.get("source_link") or "notice"
+            source_link=dl.get("source_link") or "notice",
         )
         db.add(db_dl)
 
@@ -406,7 +424,7 @@ async def enrich_bid_requirements(body: EnrichBiddingPayload, request: Request, 
         bid.id,
         _actor(request),
         "bid.requirements_enriched",
-        {"documents": len(docs_payload), "deadlines": len(deadlines_payload)}
+        {"documents": len(docs_payload), "deadlines": len(deadlines_payload)},
     )
     await db.commit()
     await db.refresh(bid)

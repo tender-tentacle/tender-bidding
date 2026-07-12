@@ -118,8 +118,8 @@ export interface Recommendation {
 
 export interface MatrixCategoryRow {
   category_id: string;
-  name: string;
-  description?: string;
+  headline: string;
+  explanation?: string | null;
   weight: number;
   ai_score: number | null;
   ai_rationale: string | null;
@@ -133,12 +133,63 @@ export interface MatrixCategoryRow {
 export interface MatrixEvaluation {
   matrix_id: string;
   matrix_name: string;
+  matrix_version: number;
   threshold: number;
   max_points: number;
   total_points: number | null;
   verdict: "bid" | "no_bid" | null;
   evaluated: boolean;
   categories: MatrixCategoryRow[];
+}
+
+export interface MatrixCategory {
+  id: string;
+  headline: string;
+  explanation?: string | null;
+  weight: number;
+}
+
+export interface Matrix {
+  id: string;
+  name: string;
+  threshold: number;
+  version: number;
+  max_points: number;
+  source_filename?: string | null;
+  uploaded_by?: string | null;
+  categories: MatrixCategory[];
+}
+
+export interface ServiceStats {
+  bids_total: number;
+  bids_by_status: Record<string, number>;
+  requirements_detected: number;
+  checklist_items_total: number;
+  checklist_items_open: number;
+  key_dates_total: number;
+  deadlines_due_14d: number;
+  corpus_documents: number;
+  matrix_evaluated_bids: number;
+  human_overrides: number;
+  activity_events: number;
+  matrix: { name: string; version: number; threshold: number } | null;
+  prompt_versions: Record<string, number>;
+}
+
+export interface PromptConfig {
+  category: string;
+  prompt_template: string;
+  version: number;
+  updated_at: string | null;
+  is_default: boolean;
+}
+
+export interface MatrixHistoryEntry {
+  version: number;
+  change_summary?: string | null;
+  created_by?: string | null;
+  created_at: string;
+  data: Record<string, unknown>;
 }
 
 export interface LibraryUsage {
@@ -181,6 +232,19 @@ export const api = {
   },
   matchDocuments: (id: string) =>
     req<{ matches: EvidenceMatch[]; corpus_size: number }>(`/bids/${id}/match`, { method: "POST" }),
+  getStats: () => req<ServiceStats>("/stats"),
+  getConfigs: () => req<Record<string, PromptConfig>>("/config"),
+  updateConfig: (category: string, body: { prompt_template: string; change_summary?: string }) =>
+    req<PromptConfig>(`/config/${category}`, { method: "POST", body: JSON.stringify(body) }),
+  getMatrix: () => req<Matrix>("/matrix"),
+  updateMatrix: (body: { name?: string; threshold?: number; change_summary?: string }) =>
+    req<Matrix>("/matrix", { method: "PUT", body: JSON.stringify(body) }),
+  addMatrixCategory: (body: { headline: string; explanation?: string; weight: number }) =>
+    req<Matrix>("/matrix/categories", { method: "POST", body: JSON.stringify(body) }),
+  updateMatrixCategory: (id: string, body: { headline?: string; explanation?: string; weight?: number }) =>
+    req<Matrix>(`/matrix/categories/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteMatrixCategory: (id: string) => req<Matrix>(`/matrix/categories/${id}`, { method: "DELETE" }),
+  getMatrixHistory: () => req<MatrixHistoryEntry[]>("/matrix/history"),
   getMatrixEvaluation: (bidId: string) => req<MatrixEvaluation>(`/bids/${bidId}/matrix-evaluation`),
   runMatrixEvaluation: (bidId: string) =>
     req<MatrixEvaluation>(`/bids/${bidId}/matrix-evaluation`, { method: "POST" }),

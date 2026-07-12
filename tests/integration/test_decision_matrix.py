@@ -34,7 +34,7 @@ async def test_upload_translates_matrix_into_weighted_categories():
     async with api_client() as client:
         m = await _upload_matrix(client)
         assert m["threshold"] == 30
-        assert [c["name"] for c in m["categories"]] == [
+        assert [c["headline"] for c in m["categories"]] == [
             "Strategic fit",
             "Comparable references",
             "Competitive environment",
@@ -62,7 +62,7 @@ async def test_evaluation_scores_categories_with_rationale_and_intel():
         assert all(c["ai_score"] is not None and c["ai_rationale"] for c in ev["categories"])
 
         # The competition category is driven by portal intel (3 mock IT competitors → 5-3=2).
-        comp = next(c for c in ev["categories"] if "Competitive" in c["name"])
+        comp = next(c for c in ev["categories"] if "Competitive" in c["headline"])
         assert comp["ai_score"] == 2
         assert "TED" in comp["ai_rationale"]
 
