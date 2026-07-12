@@ -1,67 +1,717 @@
+/* Bidding UI — matches the user-dashboard "MHP Premium" design language:
+   dark TENDER TENTACLE header + Porsche-red accent, light content area with
+   white sharp-cornered cards, Inter font, uppercase tracked labels.
+   Tokens mirror user-dashboard/ui/src/index.css so the suite looks like one app. */
+
 :root {
-  --bg: #0f1216;
-  --panel: #171b21;
-  --panel-2: #1e242c;
-  --line: #2a323c;
-  --text: #e6e9ee;
-  --muted: #9aa4b2;
-  --accent: #5b8def;
-  --ok: #2ecc71;
-  --warn: #e67e22;
-  --block: #e74c3c;
+  /* MHP Design Tokens — Premium Light Mode (verbatim from the dashboard) */
+  --canvas: #f5f4f2;
+  --surface: #ffffff;
+  --surface-soft: #eceae7;
+  --on-surface: #111111;
+  --on-surface-soft: #2c2c2c;
+  --on-surface-muted: #6b6b6b;
+  --on-primary: #ffffff;
+
+  --primary: #111111;
+  --primary-hover: #333333;
+  --primary-soft: rgba(0, 0, 0, 0.06);
+
+  --border: rgba(0, 0, 0, 0.1);
+  --border-subtle: rgba(0, 0, 0, 0.05);
+
+  /* Brand + state accents shared with the dashboard */
+  --brand-red: #d5001c;
+  --header-bg: #0e0e12;
+  --header-muted: #8b8b9e;
+  --online: #01ba6d;
+
+  --ok: #059669;
+  --ok-soft: #ecfdf5;
+  --ok-border: #a7f3d0;
+  --warn: #d97706;
+  --warn-soft: #fffbeb;
+  --warn-border: #fde68a;
+  --block: #d5001c;
+  --block-soft: #fef2f2;
+  --block-border: #fecaca;
+  --info: #4f46e5;
+  --info-soft: #eef2ff;
+  --info-border: #c7d2fe;
+
+  --radius: 0px; /* sharp corners everywhere, like the dashboard */
 }
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg: #f5f7fa; --panel: #fff; --panel-2: #f0f3f7; --line: #e2e8f0;
-    --text: #1a2230; --muted: #64748b;
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--on-surface);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Dark top header (TENDER TENTACLE branding) ─────────────────────── */
+.tt-header {
+  background: var(--header-bg);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 40px;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+.tt-header-left {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  min-width: 0;
+}
+.tt-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  white-space: nowrap;
+}
+.tt-brand-name {
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+.tt-brand-name .thin {
+  font-weight: 300;
+  opacity: 0.5;
+}
+.tt-nav {
+  display: flex;
+  gap: 4px;
+}
+.tt-nav a {
+  text-decoration: none;
+  padding: 0 13px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  color: var(--header-muted);
+  font-size: 13px;
+  font-weight: 500;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+.tt-nav a:hover {
+  color: #fff;
+}
+.tt-nav a.active {
+  color: var(--brand-red);
+  font-weight: 600;
+  border-bottom: 2px solid var(--brand-red);
+  background: rgba(213, 0, 28, 0.05);
+}
+.tt-header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.tt-env {
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.tt-online {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: rgba(1, 186, 109, 0.1);
+  border: 1px solid rgba(1, 186, 109, 0.2);
+  border-radius: 100px;
+}
+.tt-online .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--online);
+  box-shadow: 0 0 8px rgba(1, 186, 109, 0.4);
+}
+.tt-online span {
+  font-size: 11px;
+  color: var(--online);
+  font-weight: 700;
+}
+
+/* ── Content shell ──────────────────────────────────────────────────── */
+.content {
+  flex: 1;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 360px 1fr;
+}
+.error {
+  background: var(--block-soft);
+  color: var(--block);
+  border-bottom: 1px solid var(--block-border);
+  padding: 10px 40px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.section-label {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--on-surface-muted);
+  margin: 0 0 16px;
+}
+
+/* ── Bid list (left column) ─────────────────────────────────────────── */
+.bid-list {
+  border-right: 1px solid var(--border);
+  background: var(--canvas);
+  padding: 24px 20px;
+  overflow-y: auto;
+}
+.bid-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 16px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: block;
+}
+.bid-card:hover {
+  border-color: var(--primary);
+}
+.bid-card:active {
+  transform: scale(0.99);
+}
+.bid-card.active {
+  border-color: var(--primary);
+  border-left: 4px solid var(--primary);
+}
+.bid-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.bid-card-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  line-height: 1.3;
+  color: var(--on-surface);
+  margin: 0 0 10px;
+}
+.bid-card:hover .bid-card-title {
+  color: var(--primary);
+}
+.bid-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--on-surface-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.bid-card-meta svg {
+  color: var(--on-surface-muted);
+  flex-shrink: 0;
+}
+
+/* ── Workspace (right column) ───────────────────────────────────────── */
+.workspace {
+  padding: 32px 40px;
+  overflow-y: auto;
+}
+.empty {
+  color: var(--on-surface-muted);
+  margin-top: 80px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.ws-header {
+  margin-bottom: 20px;
+}
+.ws-title {
+  font-size: 22px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+  margin: 0 0 10px;
+  line-height: 1.15;
+}
+.ws-sub {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  color: var(--on-surface-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.ws-sub svg {
+  color: var(--on-surface-muted);
+}
+.ws-customer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Badges (tiny, uppercase, tracked — dashboard style) ────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  color: var(--on-surface-muted);
+  background: var(--surface);
+}
+.badge svg {
+  flex-shrink: 0;
+}
+.badge.st-draft {
+  color: var(--on-surface-muted);
+  background: var(--surface-soft);
+  border-color: var(--border);
+}
+.badge.st-in_progress {
+  color: var(--warn);
+  background: var(--warn-soft);
+  border-color: var(--warn-border);
+}
+.badge.st-submitted {
+  color: var(--info);
+  background: var(--info-soft);
+  border-color: var(--info-border);
+}
+.badge.st-won {
+  color: var(--ok);
+  background: var(--ok-soft);
+  border-color: var(--ok-border);
+}
+.badge.st-lost {
+  color: var(--block);
+  background: var(--block-soft);
+  border-color: var(--block-border);
+}
+.badge.st-withdrawn {
+  color: var(--on-surface-muted);
+  background: var(--surface-soft);
+}
+.badge.accent {
+  color: var(--primary);
+  border-color: rgba(0, 0, 0, 0.2);
+  background: var(--primary-soft);
+}
+
+/* ── Formal pre-flight gate banner ──────────────────────────────────── */
+.gate {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  margin-bottom: 28px;
+  border: 1px solid;
+  font-size: 13px;
+  font-weight: 700;
+}
+.gate svg {
+  flex-shrink: 0;
+}
+.gate-block {
+  background: var(--block-soft);
+  border-color: var(--block-border);
+  color: var(--block);
+}
+.gate-ok {
+  background: var(--ok-soft);
+  border-color: var(--ok-border);
+  color: var(--ok);
+}
+
+/* ── Panels: checklist + side cards ─────────────────────────────────── */
+.panels {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 28px;
+  align-items: start;
+}
+.kind-group {
+  margin-bottom: 28px;
+}
+.kind-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--on-surface-muted);
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.kind-head .count {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--on-surface-muted);
+  letter-spacing: 0.05em;
+}
+
+.item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: none;
+  padding: 14px 16px;
+}
+.kind-group .item:first-of-type {
+  border-top: 1px solid var(--border);
+}
+.item.done-row {
+  background: var(--primary-soft);
+}
+.item-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+}
+.item-check {
+  margin-top: 1px;
+  flex-shrink: 0;
+  color: var(--on-surface-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0;
+  cursor: pointer;
+  /* Intrinsic size: the control must stay visible/clickable even if the PDS
+     icon (a CDN asset) has not loaded — an empty icon button is a dead control. */
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  display: flex;
+}
+.item-check.checked {
+  color: var(--ok);
+}
+.item-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--on-surface);
+  line-height: 1.4;
+}
+.item-title.done {
+  text-decoration: line-through;
+  color: var(--on-surface-muted);
+}
+.item-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  margin-left: 32px;
+  flex-wrap: wrap;
+}
+.upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--primary);
+  cursor: pointer;
+}
+.upload:hover {
+  color: var(--brand-red);
+}
+.source {
+  font-size: 10px;
+  color: var(--on-surface-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.verify {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border: 1px solid;
+}
+.verify-matched {
+  color: var(--ok);
+  background: var(--ok-soft);
+  border-color: var(--ok-border);
+}
+.verify-gap,
+.verify-mismatch {
+  color: var(--block);
+  background: var(--block-soft);
+  border-color: var(--block-border);
+}
+.verify-pending {
+  color: var(--warn);
+  background: var(--warn-soft);
+  border-color: var(--warn-border);
+}
+
+/* ── Side cards (deadlines, documents) ──────────────────────────────── */
+.side-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 16px;
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--on-surface);
+  margin-bottom: 14px;
+}
+.card-head svg {
+  color: var(--on-surface-muted);
+}
+.card ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.card li {
+  font-size: 12px;
+  color: var(--on-surface-soft);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.kd-kind {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+}
+.kd-date {
+  color: var(--on-surface-muted);
+  margin-left: auto;
+}
+.days {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+  font-size: 11px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  color: var(--on-surface-muted);
+}
+.days.urgent {
+  color: var(--block);
+  border-color: var(--block-border);
+  background: var(--block-soft);
+}
+.muted {
+  color: var(--on-surface-muted);
+  font-size: 12px;
+}
+
+/* ── Transparent readiness score ────────────────────────────────────── */
+.score-total {
+  margin-left: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+  font-size: 16px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+}
+.score-row {
+  margin-bottom: 12px;
+}
+.score-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 3px;
+}
+.score-bar {
+  height: 6px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 3px;
+}
+.score-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+.score-fill.ok {
+  background: var(--ok);
+}
+.score-fill.warn {
+  background: var(--warn);
+}
+.score-fill.bad {
+  background: var(--block);
+}
+.card-actions {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.error-bar {
+  padding: 10px 40px;
+}
+.gate {
+  margin-bottom: 16px;
+}
+
+/* ── Document Library (US-101) ──────────────────────────────────────── */
+.bid-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.lib-filters {
+  display: flex;
+  gap: 10px;
+  margin: 18px 0 22px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.lib-input {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--on-surface);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 9px 12px;
+  border-radius: 0;
+}
+.lib-input:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: -1px;
+}
+.lib-q {
+  flex: 1;
+  min-width: 240px;
+}
+.lib-results {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-width: 860px;
+}
+.lib-hit {
+  border-top: 1px solid var(--border);
+}
+.lib-results .lib-hit:first-child {
+  border-top: 1px solid var(--border);
+}
+.lib-hit-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.lib-snippet {
+  display: block;
+  margin-bottom: 6px;
+}
+.lib-usages {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lib-usage {
+  color: var(--on-surface-muted);
+}
+.doc-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────── */
+/* Collapse the cross-service nav before it can crowd the status pills. */
+@media (max-width: 1120px) {
+  .tt-nav {
+    display: none;
   }
 }
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, Segoe UI, Roboto, sans-serif; }
-.app { min-height: 100vh; }
-.topbar { display: flex; align-items: baseline; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
-.topbar h1 { font-size: 18px; margin: 0; }
-.topbar .sub { color: var(--muted); font-size: 12px; }
-.error { background: #3a1d1d; color: #ffb4b4; padding: 8px 20px; }
-.layout { display: grid; grid-template-columns: 320px 1fr; min-height: calc(100vh - 52px); }
-.sidebar { border-right: 1px solid var(--line); background: var(--panel); padding: 12px; }
-.sidebar h2, .workspace h2 { font-size: 15px; }
-.sidebar ul { list-style: none; padding: 0; margin: 0; }
-.sidebar li { padding: 10px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 8px; cursor: pointer; background: var(--panel-2); }
-.sidebar li.active { border-color: var(--accent); }
-.bid-title { font-weight: 600; }
-.bid-meta { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
-.workspace { padding: 18px 22px; }
-.empty { color: var(--muted); margin-top: 40px; text-align: center; }
-.ws-header h2 { margin: 0 0 4px; }
-.ws-sub { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
-.pill { background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; font-size: 12px; }
-.pill.small { padding: 1px 7px; font-size: 11px; }
-.status-draft { color: var(--muted); }
-.status-in_progress { color: var(--accent); }
-.status-won { color: var(--ok); }
-.status-lost { color: var(--block); }
-.muted { color: var(--muted); }
-.gate { padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-weight: 600; }
-.gate-ok { background: rgba(46, 204, 113, 0.12); color: var(--ok); border: 1px solid var(--ok); }
-.gate-block { background: rgba(231, 76, 60, 0.12); color: var(--block); border: 1px solid var(--block); }
-.panels { display: grid; grid-template-columns: 1fr 300px; gap: 18px; }
-.kind-group { margin-bottom: 18px; }
-.kind-group h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 4px; }
-.item { padding: 8px; border-radius: 8px; }
-.item:hover { background: var(--panel-2); }
-.item-main { display: flex; gap: 10px; align-items: center; cursor: pointer; }
-.item-main .done { text-decoration: line-through; color: var(--muted); }
-.item-side { display: flex; gap: 8px; align-items: center; margin: 4px 0 0 26px; }
-.source { margin-left: 26px; font-size: 11px; color: var(--muted); }
-.upload { cursor: pointer; font-size: 12px; color: var(--accent); }
-.verify { font-size: 11px; padding: 1px 8px; border-radius: 999px; }
-.verify-matched { background: rgba(46,204,113,.15); color: var(--ok); }
-.verify-gap { background: rgba(231,76,60,.15); color: var(--block); }
-.verify-needs_review { background: rgba(230,126,34,.15); color: var(--warn); }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 14px; }
-.card h3 { margin: 0 0 8px; font-size: 13px; }
-.card ul { list-style: none; padding: 0; margin: 0; }
-.card li { padding: 4px 0; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.days { margin-left: auto; font-weight: 600; }
-.days.urgent { color: var(--block); }
+@media (max-width: 1000px) {
+  .content {
+    grid-template-columns: 1fr;
+  }
+  .bid-list {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-height: 40vh;
+  }
+  .panels {
+    grid-template-columns: 1fr;
+  }
+  .tt-header,
+  .error,
+  .workspace {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+}
+
+/* Reusable-evidence accept/dismiss (FEAT-053) */
+.evidence-actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 6px;
+  flex-shrink: 0;
+}

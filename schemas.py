@@ -29,7 +29,25 @@ class BidRelayPayload(BaseModel):
     questions_deadline_at: datetime | None = None
     document_text: str | None = None
     description: str | None = None
+    cpv_codes: list[str] = []
     lots: list[LotSnapshot] = []
+    # True = tender only marked "interesting" (provisional workspace, status
+    # "exploring"); False = triaged as a real bid (or promotes an exploring one).
+    provisional: bool = False
+
+
+class DiscardPayload(BaseModel):
+    """Enriching signals a no-bid triage: archive the provisional workspace."""
+
+    source_ref: str
+
+
+class MatchDecision(BaseModel):
+    """Human accepts/rejects a proposed corpus match (FEAT-053)."""
+
+    checklist_item_id: str
+    document_id: str
+    reason: str | None = None  # rejections carry the why (learning signal)
 
 
 class CollaboratorIn(BaseModel):

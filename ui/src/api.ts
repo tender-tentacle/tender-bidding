@@ -75,9 +75,87 @@ export interface BidDetail extends BidSummary {
   formal_gate?: FormalGate;
 }
 
+export interface ScoreCriterion {
+  key: string;
+  label: string;
+  weight: number;
+  score: number;
+  detail: string;
+}
+
+export interface Score {
+  total: number;
+  criteria: ScoreCriterion[];
+}
+
+export interface EvidenceMatch {
+  checklist_item_id: string;
+  requirement: string;
+  document_id: string;
+  filename: string;
+  from_corpus: boolean;
+  overlap: number;
+  source: string;
+}
+
+export interface Recommendation {
+  recommendation: "bid" | "no_bid" | "review";
+  confidence: number;
+  score: Score;
+  reusable_evidence: EvidenceMatch[];
+  reasons: string[];
+}
+
+export interface LibraryUsage {
+  bid_id: string;
+  bid_title: string;
+  bid_status: string;
+  won: boolean;
+  customer?: string;
+  cpv_codes: string[];
+}
+
+export interface LibraryResult {
+  fingerprint: string;
+  document_id: string;
+  filename: string;
+  kind: string;
+  sensitivity: string;
+  doc_type?: string;
+  snippet: string;
+  score: number;
+  proven: boolean;
+  usages: LibraryUsage[];
+}
+
+export interface LibrarySearch {
+  results: LibraryResult[];
+  total: number;
+  visible_sensitivities: string[];
+}
+
 export const api = {
   listBids: () => req<BidSummary[]>("/bids"),
   getBid: (id: string) => req<BidDetail>(`/bids/${id}`),
+  getRecommendation: (id: string) => req<Recommendation>(`/bids/${id}/recommendation`),
+  searchLibrary: (params: { q?: string; kind?: string; client?: string; cpv?: string }) => {
+    const qs = new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([, v]) => v)) as Record<string, string>,
+    );
+    return req<LibrarySearch>(`/library/search?${qs.toString()}`);
+  },
+  matchDocuments: (id: string) =>
+    req<{ matches: EvidenceMatch[]; corpus_size: number }>(`/bids/${id}/match`, { method: "POST" }),
+  acceptMatch: (bidId: string, body: { checklist_item_id: string; document_id: string }) =>
+    req<{ checklist_item_id: string; ai_verification: Record<string, unknown> }>(`/bids/${bidId}/match/accept`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  rejectMatch: (bidId: string, body: { checklist_item_id: string; document_id: string; reason?: string }) =>
+    req<{ checklist_item_id: string; rejected_document_id: string }>(`/bids/${bidId}/match/reject`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   updateItem: (bidId: string, itemId: string, body: { status?: string; assignee_user_id?: string }) =>
     req<ChecklistItem>(`/bids/${bidId}/checklist/${itemId}`, { method: "PATCH", body: JSON.stringify(body) }),
   setStatus: (bidId: string, body: { status: string; expected_version: number; loss_reason?: string }) =>

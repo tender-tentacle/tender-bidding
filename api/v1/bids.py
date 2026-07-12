@@ -24,6 +24,7 @@ from schemas import (
     CollaboratorOut,
     FormalGate,
     KeyDateOut,
+    MatchDecision,
     StatusUpdate,
 )
 from services import activity
@@ -167,3 +168,99 @@ async def get_activity(bid_id: str, db: AsyncSession = Depends(get_db)):
         .scalars()
         .all()
     )
+
+
+@router.get("/{bid_id}/score")
+async def get_score(bid_id: str, db: AsyncSession = Depends(get_db)):
+    """Transparent readiness score: weighted criteria, each with its own detail line."""
+    from services.scoring import compute_score
+
+    return compute_score(await _load(db, bid_id))
+
+
+@router.get("/{bid_id}/recommendation")
+async def get_recommendation(bid_id: str, db: AsyncSession = Depends(get_db)):
+    """Bid / no-bid / review advice with explicit reasons and reusable cross-bid evidence."""
+    from services.scoring import recommend
+
+    return await recommend(db, await _load(db, bid_id))
+
+
+@router.post("/{bid_id}/match")
+async def rematch_documents(bid_id: str, request: Request, db: AsyncSession = Depends(get_db)):
+    """Re-match uploads (own + cross-bid corpus) against open requirements."""
+    from services.scoring import match_documents
+
+    bid = await _load(db, bid_id)
+    result = await match_documents(db, bid)
+    activity.record(db, bid.id, _actor(request), "documents.matched", {"matches": len(result["matches"])})
+    await db.commit()
+    return result
+
+
+@router.post("/{bid_id}/match/accept")
+async def accept_match(bid_id: str, body: MatchDecision, request: Request, db: AsyncSession = Depends(get_db)):
+    """Accept a proposed corpus match: link the evidence with full provenance.
+
+    The item is NOT auto-completed — a human still adapts the document; the
+    acceptance only records that trusted evidence exists and where it came from.
+    """
+    from models.bid import BidDocument
+    from sqlalchemy import select as sa_select
+
+    bid = await _load(db, bid_id)
+    item = next((i for i in bid.checklist_items if i.id == body.checklist_item_id), None)
+    if not item:
+        raise HTTPException(status_code=404, detail="Checklist item not found on this bid")
+    doc = (await db.execute(sa_select(BidDocument).where(BidDocument.id == body.document_id))).scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    from_corpus = doc.bid_id != bid.id
+    item.ai_verification = {
+        "status": "matched",
+        "detail": f"Evidence accepted: {doc.filename}" + (" (cross-bid corpus)" if from_corpus else ""),
+        "from_corpus": from_corpus,
+        "source_bid_id": doc.bid_id,
+        "source_document_id": doc.id,
+        "accepted_by": _actor(request),
+    }
+    activity.record(
+        db,
+        bid.id,
+        _actor(request),
+        "match.accepted",
+        {
+            "checklist_item_id": item.id,
+            "requirement": item.title,
+            "document_id": doc.id,
+            "filename": doc.filename,
+            "source_bid_id": doc.bid_id,
+            "from_corpus": from_corpus,
+        },
+    )
+    await db.commit()
+    return {"checklist_item_id": item.id, "ai_verification": item.ai_verification}
+
+
+@router.post("/{bid_id}/match/reject")
+async def reject_match(bid_id: str, body: MatchDecision, request: Request, db: AsyncSession = Depends(get_db)):
+    """Reject a proposed match. The item is untouched; the why is kept as a learning signal."""
+    bid = await _load(db, bid_id)
+    item = next((i for i in bid.checklist_items if i.id == body.checklist_item_id), None)
+    if not item:
+        raise HTTPException(status_code=404, detail="Checklist item not found on this bid")
+    activity.record(
+        db,
+        bid.id,
+        _actor(request),
+        "match.rejected",
+        {
+            "checklist_item_id": item.id,
+            "requirement": item.title,
+            "document_id": body.document_id,
+            "reason": body.reason,
+        },
+    )
+    await db.commit()
+    return {"checklist_item_id": item.id, "rejected_document_id": body.document_id}

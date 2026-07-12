@@ -14,6 +14,7 @@ export default defineConfig({
     url: "http://localhost:5174",
     reuseExistingServer: true,
     timeout: 60_000,
-    cwd: "..",
+    // Relative to this config file (tests/e2e/) → the service root.
+    cwd: "../..",
   },
 });

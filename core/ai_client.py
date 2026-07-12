@@ -39,9 +39,25 @@ class AIClient:
     async def verify_document(self, requirement: str, doc_markdown: str) -> dict[str, Any]:
         raise NotImplementedError
 
+    async def semantic_scores(self, query: str, texts: list[str]) -> list[float]:
+        """Relevance (0–1) of each text to the query. Mock = token overlap; a real
+        embedding backend slots in behind the same signature."""
+        raise NotImplementedError
+
 
 class MockAIClient(AIClient):
     """Deterministic, offline checklist/deadline/verification generation."""
+
+    async def semantic_scores(self, query: str, texts: list[str]) -> list[float]:
+        import re
+
+        def toks(s: str) -> set[str]:
+            return set(re.findall(r"[a-zä-üß]{4,}", (s or "").lower()))
+
+        q = toks(query)
+        if not q:
+            return [0.0 for _ in texts]
+        return [len(q & toks(t)) / len(q) for t in texts]
 
     async def generate_checklist(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         src = snapshot.get("source_ref") or snapshot.get("external_id") or "tender"
@@ -138,6 +154,9 @@ class RealAIClient(AIClient):
 
     async def verify_document(self, requirement: str, doc_markdown: str) -> dict[str, Any]:
         return await self._fallback.verify_document(requirement, doc_markdown)
+
+    async def semantic_scores(self, query: str, texts: list[str]) -> list[float]:
+        return await self._fallback.semantic_scores(query, texts)
 
 
 def get_ai_client() -> AIClient:

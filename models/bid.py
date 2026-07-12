@@ -25,15 +25,17 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-# Bid lifecycle
-BID_STATUSES = ("draft", "in_progress", "submitted", "won", "lost", "withdrawn")
+# Bid lifecycle. "exploring" = provisional workspace created when a tender is
+# merely marked *interesting* in enriching (FEAT-051): analysis runs, but the
+# bid is not committed until triage says "bid" (→ promoted to "draft").
+BID_STATUSES = ("exploring", "draft", "in_progress", "submitted", "won", "lost", "withdrawn")
 # Loss reasons feed the Win/Loss learning loop (2.7)
 LOSS_REASONS = ("formal", "price", "quality", "reference_gap", "other")
 # Checklist criterion kinds (2.3 / §3–4). "formal" items drive the pre-flight gate.
 CRITERION_KINDS = ("formal", "suitability", "award")
 CHECKLIST_STATUSES = ("open", "done", "n_a")
 COLLABORATOR_ROLES = ("lead", "contributor", "reviewer")
-DOCUMENT_KINDS = ("tender", "reference", "profile", "supporting")
+DOCUMENT_KINDS = ("tender", "reference", "profile", "certificate", "declaration", "supporting")
 # Sensitivity governs access/retention. "special" = GDPR special-category (court docs, CVs).
 SENSITIVITIES = ("normal", "personal", "special")
 KEYDATE_KINDS = ("submission", "questions", "validity")
@@ -47,6 +49,7 @@ class Bid(Base):
     source_ref: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     source_kind: Mapped[str] = mapped_column(String(20), default="tender")  # tender | group
     lots_in_scope: Mapped[list | None] = mapped_column(JSON, default=list)
+    cpv_codes: Mapped[list | None] = mapped_column(JSON, default=list)  # from the tender snapshot
 
     driver_user_id: Mapped[str | None] = mapped_column(String(255), index=True)
     title: Mapped[str] = mapped_column(String(1000))
