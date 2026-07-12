@@ -169,10 +169,40 @@ async def recommend(db: AsyncSession, bid: Bid) -> dict[str, Any]:
         decision, confidence = "no_bid", 0.7
         reasons.insert(0, f"Readiness score {score['total']}/100 below the review threshold (45)")
 
+    # Strategic layer: an evaluated decision matrix leads the recommendation.
+    # The expert's weighted criteria decide bid/no-bid; the operational readiness
+    # reasoning above stays as supporting context.
+    matrix_summary = None
+    from services.decision_matrix import get_evaluation
+
+    try:
+        evaluation = await get_evaluation(db, bid)
+    except LookupError:
+        evaluation = None
+    if evaluation and evaluation["evaluated"]:
+        matrix_summary = {
+            "matrix_name": evaluation["matrix_name"],
+            "total_points": evaluation["total_points"],
+            "threshold": evaluation["threshold"],
+            "max_points": evaluation["max_points"],
+            "verdict": evaluation["verdict"],
+            "overrides": sum(1 for c in evaluation["categories"] if c["human_score"] is not None),
+        }
+        decision = evaluation["verdict"]
+        margin = abs(evaluation["total_points"] - evaluation["threshold"]) / max(1, evaluation["max_points"])
+        confidence = round(min(0.95, 0.6 + margin), 2)
+        reasons.insert(
+            0,
+            f"Decision matrix '{evaluation['matrix_name']}': {evaluation['total_points']}/{evaluation['max_points']} "
+            f"weighted points vs threshold {evaluation['threshold']} → {evaluation['verdict'].upper().replace('_', ' ')}"
+            + (f" ({matrix_summary['overrides']} human override(s) applied)" if matrix_summary["overrides"] else ""),
+        )
+
     return {
         "recommendation": decision,
         "confidence": round(confidence, 2),
         "score": score,
+        "matrix": matrix_summary,
         "reusable_evidence": reusable,
         "reasons": reasons,
     }

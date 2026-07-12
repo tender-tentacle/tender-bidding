@@ -715,3 +715,76 @@ body {
   gap: 6px;
   flex-shrink: 0;
 }
+
+/* ── Decision matrix (bid/no-bid) ───────────────────────────────────── */
+.lib-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.matrix {
+  margin-bottom: 28px;
+}
+.matrix .kind-head {
+  gap: 12px;
+}
+.matrix-rows {
+  border: 1px solid var(--border);
+  border-top: none;
+}
+.matrix-row {
+  display: grid;
+  grid-template-columns: 240px 1fr 190px 60px;
+  gap: 12px;
+  align-items: center;
+  background: var(--surface);
+  border-top: 1px solid var(--border-subtle);
+  padding: 10px 14px;
+}
+.matrix-row:first-child {
+  border-top: 1px solid var(--border);
+}
+.matrix-cell.name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.matrix-cell.ai {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.matrix-rationale {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.matrix-cell.human {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.matrix-override {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.matrix-select {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.matrix-cell.pts {
+  text-align: right;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (max-width: 1200px) {
+  .matrix-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .matrix-cell.pts {
+    text-align: left;
+  }
+}

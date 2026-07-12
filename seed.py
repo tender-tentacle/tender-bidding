@@ -107,9 +107,29 @@ CORPUS_DOCS = [
 ]
 
 
+SEED_MATRIX_DOC = """# Public Sector Bid/No-Bid Matrix
+- Strategic fit (weight 5): Fit with cluster strategy and target customers
+- Comparable references (weight 4): References from the last 3 years for this service and sector
+- Delivery capacity (weight 4): Team availability and required qualification profiles
+- Competitive environment (weight 3): Incumbent advantage, number of likely competitors
+- Profitability (weight 3): Expected margin and price pressure
+- Formal & legal risk (weight 4): Contract terms, liability, missing certifications
+threshold: 69
+"""
+
+
 async def main() -> None:
     await init_db()
     async with SessionLocal() as db:
+        # Active decision matrix (idempotent: only when none exists yet).
+        from services.decision_matrix import create_matrix_from_upload, get_active_matrix
+
+        if not await get_active_matrix(db):
+            matrix = await create_matrix_from_upload(
+                db, markdown=SEED_MATRIX_DOC, filename="bid-no-bid-matrix.md", uploaded_by="anna"
+            )
+            logger.info(f"🧭 decision matrix: {matrix.name} ({len(matrix.categories)} categories, ≥{matrix.threshold})")
+
         bids_by_ref = {}
         for payload in SAMPLES:
             bid, created = await create_bid_from_snapshot(db, payload)

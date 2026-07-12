@@ -13,7 +13,7 @@ import uuid
 from datetime import UTC, datetime
 
 from core.database import Base
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
@@ -166,6 +166,67 @@ class BidActivity(Base):
     action: Mapped[str] = mapped_column(String(100))
     detail: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)
+
+
+class DecisionMatrix(Base):
+    """Company bid/no-bid decision matrix (FEAT: strategic decision support).
+
+    Uploaded by the expert (head of public sector); AI translates the document
+    into weighted categories. One matrix is active at a time — evaluations
+    always run against the active matrix.
+    """
+
+    __tablename__ = "bid_decision_matrix"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(255))
+    source_filename: Mapped[str | None] = mapped_column(String(500))
+    uploaded_by: Mapped[str | None] = mapped_column(String(255))
+    # Verdict rule: Σ(effective_score × weight) ≥ threshold → bid, else no_bid.
+    threshold: Mapped[int] = mapped_column(Integer)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    categories: Mapped[list[DecisionCategory]] = relationship(
+        back_populates="matrix", cascade="all, delete-orphan", lazy="selectin", order_by="DecisionCategory.order"
+    )
+
+
+class DecisionCategory(Base):
+    """One decision criterion ("sub step") of the matrix. Weight 1–5."""
+
+    __tablename__ = "bid_decision_category"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    matrix_id: Mapped[str] = mapped_column(ForeignKey("bid_decision_matrix.id"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    weight: Mapped[int] = mapped_column(Integer, default=3)  # 1–5
+    order: Mapped[int] = mapped_column(Integer, default=0)
+
+    matrix: Mapped[DecisionMatrix] = relationship(back_populates="categories")
+
+
+class BidCategoryRating(Base):
+    """Per-bid rating of one decision category. Scores 0–5.
+
+    The AI proposes (score + rationale, incl. portal intelligence); the human in
+    the loop may override — the override always wins in the verdict.
+    """
+
+    __tablename__ = "bid_category_rating"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    bid_id: Mapped[str] = mapped_column(ForeignKey("bid.id"), index=True)
+    category_id: Mapped[str] = mapped_column(ForeignKey("bid_decision_category.id"), index=True)
+    ai_score: Mapped[int | None] = mapped_column(Integer)  # 0–5
+    ai_rationale: Mapped[str | None] = mapped_column(Text)
+    human_score: Mapped[int | None] = mapped_column(Integer)  # 0–5, overrides ai_score
+    human_note: Mapped[str | None] = mapped_column(Text)
+    overridden_by: Mapped[str | None] = mapped_column(String(255))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    category: Mapped[DecisionCategory] = relationship(lazy="selectin")
 
 
 class PortalGuide(Base):

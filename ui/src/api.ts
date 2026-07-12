@@ -98,12 +98,47 @@ export interface EvidenceMatch {
   source: string;
 }
 
+export interface MatrixSummary {
+  matrix_name: string;
+  total_points: number;
+  threshold: number;
+  max_points: number;
+  verdict: "bid" | "no_bid";
+  overrides: number;
+}
+
 export interface Recommendation {
   recommendation: "bid" | "no_bid" | "review";
   confidence: number;
   score: Score;
+  matrix: MatrixSummary | null;
   reusable_evidence: EvidenceMatch[];
   reasons: string[];
+}
+
+export interface MatrixCategoryRow {
+  category_id: string;
+  name: string;
+  description?: string;
+  weight: number;
+  ai_score: number | null;
+  ai_rationale: string | null;
+  human_score: number | null;
+  human_note: string | null;
+  overridden_by: string | null;
+  effective_score: number | null;
+  weighted_points: number | null;
+}
+
+export interface MatrixEvaluation {
+  matrix_id: string;
+  matrix_name: string;
+  threshold: number;
+  max_points: number;
+  total_points: number | null;
+  verdict: "bid" | "no_bid" | null;
+  evaluated: boolean;
+  categories: MatrixCategoryRow[];
 }
 
 export interface LibraryUsage {
@@ -146,6 +181,21 @@ export const api = {
   },
   matchDocuments: (id: string) =>
     req<{ matches: EvidenceMatch[]; corpus_size: number }>(`/bids/${id}/match`, { method: "POST" }),
+  getMatrixEvaluation: (bidId: string) => req<MatrixEvaluation>(`/bids/${bidId}/matrix-evaluation`),
+  runMatrixEvaluation: (bidId: string) =>
+    req<MatrixEvaluation>(`/bids/${bidId}/matrix-evaluation`, { method: "POST" }),
+  overrideMatrixCategory: (bidId: string, categoryId: string, body: { score: number | null; note?: string }) =>
+    req<MatrixEvaluation>(`/bids/${bidId}/matrix-evaluation/${categoryId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  uploadMatrix: async (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch(`${BASE}/matrix`, { method: "POST", body: fd });
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+    return res.json();
+  },
   acceptMatch: (bidId: string, body: { checklist_item_id: string; document_id: string }) =>
     req<{ checklist_item_id: string; ai_verification: Record<string, unknown> }>(`/bids/${bidId}/match/accept`, {
       method: "POST",

@@ -14,6 +14,7 @@ import {
   type ChecklistItem,
   type KeyDate,
   type LibrarySearch,
+  type MatrixEvaluation,
   type Recommendation,
 } from "./api";
 
@@ -235,6 +236,16 @@ function Library() {
   const [cpv, setCpv] = useState("");
   const [res, setRes] = useState<LibrarySearch | null>(null);
   const [busy, setBusy] = useState(false);
+  const [matrixMsg, setMatrixMsg] = useState<string | null>(null);
+
+  async function uploadMatrix(file: File) {
+    try {
+      const m = await api.uploadMatrix(file);
+      setMatrixMsg(`Matrix "${m.name}" active: ${m.categories.length} categories, threshold ${m.threshold}.`);
+    } catch (e) {
+      setMatrixMsg(`Upload failed: ${String(e)}`);
+    }
+  }
 
   const search = useCallback(() => {
     setBusy(true);
@@ -249,14 +260,44 @@ function Library() {
 
   return (
     <div data-testid="library">
-      <div className="ws-header">
-        <PHeading size="large" tag="h1">
-          Document Library
-        </PHeading>
-        <PText size="small" color="contrast-medium">
-          Search every document ever used in a bid — assemble your package from proven assets.
-        </PText>
+      <div className="ws-header lib-head">
+        <div>
+          <PHeading size="large" tag="h1">
+            Document Library
+          </PHeading>
+          <PText size="small" color="contrast-medium">
+            Search every document ever used in a bid — assemble your package from proven assets.
+          </PText>
+        </div>
+        <label className="matrix-upload">
+          <PButton
+            type="button"
+            variant="secondary"
+            icon="upload"
+            compact={true}
+            onClick={(e) => ((e.currentTarget as HTMLElement).parentElement?.querySelector("input") as HTMLInputElement)?.click()}
+            data-testid="matrix-upload"
+          >
+            Upload decision matrix
+          </PButton>
+          <input
+            type="file"
+            style={{ display: "none" }}
+            accept=".md,.txt,.csv"
+            onChange={(e) => e.target.files?.[0] && uploadMatrix(e.target.files[0])}
+          />
+        </label>
       </div>
+      {matrixMsg && (
+        <div className="gate" data-testid="matrix-upload-result">
+          <PInlineNotification
+            state={matrixMsg.startsWith("Upload failed") ? "error" : "success"}
+            heading="Decision matrix"
+            description={matrixMsg}
+            dismissButton={false}
+          />
+        </div>
+      )}
 
       <div className="lib-filters">
         <input
@@ -334,6 +375,125 @@ function Library() {
                     {u.customer ? ` — ${u.customer}` : ""} ({u.bid_status})
                   </PText>
                 ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const OVERRIDE_CHOICES = ["—", "0", "1", "2", "3", "4", "5"];
+
+function MatrixPanel({ bidId, onChanged }: { bidId: string; onChanged: () => void }) {
+  const [ev, setEv] = useState<MatrixEvaluation | null>(null);
+  const [missing, setMissing] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => {
+    api
+      .getMatrixEvaluation(bidId)
+      .then((e) => {
+        setEv(e);
+        setMissing(false);
+      })
+      .catch(() => setMissing(true));
+  }, [bidId]);
+
+  useEffect(load, [load]);
+
+  async function evaluate() {
+    setBusy(true);
+    try {
+      setEv(await api.runMatrixEvaluation(bidId));
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function override(categoryId: string, value: string) {
+    const score = value === "—" ? null : Number(value);
+    setEv(await api.overrideMatrixCategory(bidId, categoryId, { score }));
+    onChanged();
+  }
+
+  if (missing) return null; // no active matrix uploaded yet
+
+  return (
+    <div className="matrix" data-testid="matrix-panel">
+      <div className="kind-head">
+        <PHeading size="small" tag="h3">
+          Decision Matrix — {ev?.matrix_name ?? "…"}
+        </PHeading>
+        {ev?.evaluated && ev.verdict && (
+          <PTag variant={ev.verdict === "bid" ? "success" : "error"} compact={true} data-testid="matrix-verdict">
+            {ev.total_points}/{ev.max_points} pts · threshold {ev.threshold} → {ev.verdict.replace("_", " ")}
+          </PTag>
+        )}
+        <PButton
+          type="button"
+          variant="secondary"
+          icon="refresh"
+          compact={true}
+          loading={busy}
+          onClick={evaluate}
+          data-testid="matrix-evaluate"
+        >
+          {ev?.evaluated ? "Re-evaluate with AI" : "Evaluate with AI"}
+        </PButton>
+      </div>
+      {ev && (
+        <div className="matrix-rows">
+          {ev.categories.map((c) => (
+            <div key={c.category_id} className="matrix-row" data-testid="matrix-category" title={c.description ?? ""}>
+              <div className="matrix-cell name">
+                <PText size="small" weight="semibold" tag="span">
+                  {c.name}
+                </PText>
+                <PTag variant="secondary" compact={true}>
+                  w {c.weight}
+                </PTag>
+              </div>
+              <div className="matrix-cell ai">
+                <PText size="xs" color="contrast-medium" tag="span">
+                  AI: {c.ai_score ?? "—"}
+                </PText>
+                {c.ai_rationale && (
+                  <PText size="xs" color="contrast-medium" tag="span" className="matrix-rationale">
+                    {c.ai_rationale}
+                  </PText>
+                )}
+              </div>
+              <div className="matrix-cell human">
+                <label className="matrix-override">
+                  <PText size="xs" color="contrast-medium" tag="span">
+                    Override
+                  </PText>
+                  <select
+                    className="lib-input matrix-select"
+                    value={c.human_score === null ? "—" : String(c.human_score)}
+                    onChange={(e) => override(c.category_id, e.target.value)}
+                    data-testid="matrix-override"
+                  >
+                    {OVERRIDE_CHOICES.map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {c.overridden_by && (
+                  <PText size="xs" color="contrast-medium" tag="span">
+                    by {c.overridden_by}
+                  </PText>
+                )}
+              </div>
+              <div className="matrix-cell pts">
+                <PText size="small" weight="semibold" tag="span">
+                  {c.weighted_points ?? "—"}
+                </PText>
               </div>
             </div>
           ))}
@@ -511,6 +671,8 @@ function Workspace({
           />
         </div>
       )}
+
+      <MatrixPanel bidId={bid.id} onChanged={loadReco} />
 
       <div className="panels">
         <section className="checklist">

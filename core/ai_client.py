@@ -44,6 +44,18 @@ class AIClient:
         embedding backend slots in behind the same signature."""
         raise NotImplementedError
 
+    async def extract_decision_matrix(self, doc_markdown: str) -> dict[str, Any]:
+        """Translate an uploaded decision-matrix document into weighted categories.
+
+        Returns {"name", "threshold", "categories": [{"name", "description", "weight"}]}.
+        Weights are clamped to 1–5; threshold is in weighted points.
+        """
+        raise NotImplementedError
+
+    async def score_category(self, category: dict[str, Any], bid_text: str, intel: dict[str, Any]) -> dict[str, Any]:
+        """Score one decision category 0–5 for a bid. Returns {"score", "rationale"}."""
+        raise NotImplementedError
+
 
 class MockAIClient(AIClient):
     """Deterministic, offline checklist/deadline/verification generation."""
@@ -58,6 +70,91 @@ class MockAIClient(AIClient):
         if not q:
             return [0.0 for _ in texts]
         return [len(q & toks(t)) / len(q) for t in texts]
+
+    # Fallback categories when the uploaded matrix has no parseable structure —
+    # the classic German public-sector bid/no-bid criteria set.
+    DEFAULT_MATRIX_CATEGORIES = [
+        {
+            "name": "Strategic fit",
+            "description": "Fit with portfolio, cluster strategy and target customers",
+            "weight": 5,
+        },
+        {
+            "name": "Comparable references",
+            "description": "Do we hold comparable references from the last 3 years?",
+            "weight": 4,
+        },
+        {
+            "name": "Delivery capacity",
+            "description": "Team availability and qualification profiles for the runtime",
+            "weight": 4,
+        },
+        {
+            "name": "Competitive environment",
+            "description": "Incumbent advantage and number of likely competitors",
+            "weight": 3,
+        },
+        {"name": "Profitability", "description": "Expected margin, price pressure, framework conditions", "weight": 3},
+        {
+            "name": "Formal & legal risk",
+            "description": "Contract terms, liability, certifications we lack",
+            "weight": 4,
+        },
+    ]
+
+    async def extract_decision_matrix(self, doc_markdown: str) -> dict[str, Any]:
+        """Deterministic translation: parses `Category (weight N): description` lines
+        and a `threshold: N` line; falls back to the default category set."""
+        text = doc_markdown or ""
+        categories: list[dict[str, Any]] = []
+        for m in re.finditer(r"(?m)^[-*•]?\s*(.+?)\s*\((?:weight|gewicht)\s*[:=]?\s*(\d)\)\s*:?\s*(.*)$", text, re.I):
+            categories.append(
+                {
+                    "name": m.group(1).strip()[:255],
+                    "description": m.group(3).strip() or None,
+                    "weight": min(5, max(1, int(m.group(2)))),
+                }
+            )
+        if not categories:
+            categories = [dict(c) for c in self.DEFAULT_MATRIX_CATEGORIES]
+
+        max_points = 5 * sum(c["weight"] for c in categories)
+        th = re.search(r"(?:threshold|schwelle|schwellwert)\s*[:=]?\s*(\d+)", text, re.I)
+        threshold = min(max_points, int(th.group(1))) if th else round(max_points * 0.6)
+
+        name_match = re.search(r"(?m)^#*\s*(.+matrix.*)$", text, re.I)
+        return {
+            "name": (name_match.group(1).strip() if name_match else "Bid/No-Bid Decision Matrix")[:255],
+            "threshold": threshold,
+            "categories": categories,
+        }
+
+    async def score_category(self, category: dict[str, Any], bid_text: str, intel: dict[str, Any]) -> dict[str, Any]:
+        """Deterministic 0–5 score with a transparent rationale.
+
+        Competition-flavoured categories are driven by portal intelligence
+        (more likely competitors → lower score); everything else by evidence
+        overlap between the category and the bid's text corpus.
+        """
+        name = (category.get("name") or "").lower()
+        desc = (category.get("description") or "").lower()
+
+        if any(w in name + desc for w in ("competit", "wettbewerb", "konkurren")):
+            n = len(intel.get("competitors", []))
+            score = max(0, 5 - n)
+            names = ", ".join(c["name"] for c in intel.get("competitors", [])[:3]) or "none found"
+            portals = "/".join(intel.get("source_portals", []))
+            return {
+                "score": score,
+                "rationale": f"{n} likely competitor(s) via {portals}: {names}. Fewer competitors → higher score.",
+            }
+
+        terms = [w for w in re.split(r"\W+", f"{name} {desc}") if len(w) > 4]
+        text = (bid_text or "").lower()
+        hits = sorted({w for w in terms if w in text})
+        score = min(5, len(hits) + (1 if hits else 0))
+        detail = f"evidence terms found: {', '.join(hits)}" if hits else "no supporting evidence found in bid corpus"
+        return {"score": score, "rationale": f"{len(hits)} of {len(set(terms))} category terms covered — {detail}."}
 
     async def generate_checklist(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         src = snapshot.get("source_ref") or snapshot.get("external_id") or "tender"
@@ -157,6 +254,12 @@ class RealAIClient(AIClient):
 
     async def semantic_scores(self, query: str, texts: list[str]) -> list[float]:
         return await self._fallback.semantic_scores(query, texts)
+
+    async def extract_decision_matrix(self, doc_markdown: str) -> dict[str, Any]:
+        return await self._fallback.extract_decision_matrix(doc_markdown)
+
+    async def score_category(self, category: dict[str, Any], bid_text: str, intel: dict[str, Any]) -> dict[str, Any]:
+        return await self._fallback.score_category(category, bid_text, intel)
 
 
 def get_ai_client() -> AIClient:

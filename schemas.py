@@ -50,6 +50,13 @@ class MatchDecision(BaseModel):
     reason: str | None = None  # rejections carry the why (learning signal)
 
 
+class RatingOverrideIn(BaseModel):
+    """Human-in-the-loop override of one decision-category rating (0–5; null clears)."""
+
+    score: int | None = None
+    note: str | None = None
+
+
 class CollaboratorIn(BaseModel):
     user_id: str
     role: str = "contributor"
