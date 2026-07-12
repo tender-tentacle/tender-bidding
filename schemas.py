@@ -57,6 +57,29 @@ class RatingOverrideIn(BaseModel):
     note: str | None = None
 
 
+class MatrixUpdateIn(BaseModel):
+    """Expert backend: update matrix settings (versioned, with history)."""
+
+    name: str | None = None
+    threshold: int | None = None
+    change_summary: str | None = None
+
+
+class CategoryIn(BaseModel):
+    """Expert backend: a decision category. The explanation is the expert's
+    intent in prose — the AI grounds its 0–5 scoring on it."""
+
+    headline: str
+    explanation: str | None = None
+    weight: int = 3
+
+
+class CategoryUpdateIn(BaseModel):
+    headline: str | None = None
+    explanation: str | None = None
+    weight: int | None = None
+
+
 class CollaboratorIn(BaseModel):
     user_id: str
     role: str = "contributor"
@@ -95,6 +118,16 @@ class KeyDateOut(BaseModel):
     date: datetime | None = None
     source_link: str | None = None
     days_remaining: int | None = None
+
+
+class RequiredDocumentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    bid_id: str
+    document_name: str
+    description: str | None = None
+    category: str | None = None
+    created_at: datetime
 
 
 class DocumentOut(BaseModel):
@@ -155,6 +188,7 @@ class BidDetail(BidSummary):
     checklist_items: list[ChecklistItemOut] = []
     documents: list[DocumentOut] = []
     key_dates: list[KeyDateOut] = []
+    required_documents: list[RequiredDocumentOut] = []
     formal_gate: FormalGate | None = None
 
 
@@ -172,3 +206,9 @@ class ActivityOut(BaseModel):
     action: str
     detail: dict | None = None
     created_at: datetime
+
+
+class EnrichBiddingPayload(BaseModel):
+    """Trigger payload for pulling and AI extraction of bidding documents & deadlines."""
+    source_id: str
+    source_kind: str = "tender"  # tender | group

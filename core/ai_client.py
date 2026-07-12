@@ -36,6 +36,12 @@ class AIClient:
     async def extract_deadlines(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         raise NotImplementedError
 
+    async def extract_required_documents(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+        raise NotImplementedError
+
+    async def extract_bidding_deadlines(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+        raise NotImplementedError
+
     async def verify_document(self, requirement: str, doc_markdown: str) -> dict[str, Any]:
         raise NotImplementedError
 
@@ -47,7 +53,8 @@ class AIClient:
     async def extract_decision_matrix(self, doc_markdown: str) -> dict[str, Any]:
         """Translate an uploaded decision-matrix document into weighted categories.
 
-        Returns {"name", "threshold", "categories": [{"name", "description", "weight"}]}.
+        Returns {"name", "threshold", "categories": [{"headline", "explanation", "weight"}]}.
+        The explanation is the expert's intent in prose — it grounds the scoring.
         Weights are clamped to 1–5; threshold is in weighted points.
         """
         raise NotImplementedError
@@ -72,46 +79,57 @@ class MockAIClient(AIClient):
         return [len(q & toks(t)) / len(q) for t in texts]
 
     # Fallback categories when the uploaded matrix has no parseable structure —
-    # the classic German public-sector bid/no-bid criteria set.
+    # the classic German public-sector bid/no-bid criteria set. Each explanation
+    # states the expert's intent in prose: it is what the AI scores against.
     DEFAULT_MATRIX_CATEGORIES = [
         {
-            "name": "Strategic fit",
-            "description": "Fit with portfolio, cluster strategy and target customers",
+            "headline": "Strategic fit",
+            "explanation": "How well does the tender fit our portfolio, cluster strategy and target customers? "
+            "High scores need an explicit link to a strategic cluster or a named target account.",
             "weight": 5,
         },
         {
-            "name": "Comparable references",
-            "description": "Do we hold comparable references from the last 3 years?",
+            "headline": "Comparable references",
+            "explanation": "Do we hold comparable references from the last 3 years for this service and sector? "
+            "Score by how directly our references match subject, volume and customer type.",
             "weight": 4,
         },
         {
-            "name": "Delivery capacity",
-            "description": "Team availability and qualification profiles for the runtime",
+            "headline": "Delivery capacity",
+            "explanation": "Team availability and required qualification profiles over the contract runtime. "
+            "Low scores when key profiles are missing or already committed elsewhere.",
             "weight": 4,
         },
         {
-            "name": "Competitive environment",
-            "description": "Incumbent advantage and number of likely competitors",
+            "headline": "Competitive environment",
+            "explanation": "Incumbent advantage and the number of likely competitors on this notice. "
+            "Fewer credible competitors and no entrenched incumbent mean a higher score.",
             "weight": 3,
         },
-        {"name": "Profitability", "description": "Expected margin, price pressure, framework conditions", "weight": 3},
         {
-            "name": "Formal & legal risk",
-            "description": "Contract terms, liability, certifications we lack",
+            "headline": "Profitability",
+            "explanation": "Expected margin, price pressure and framework conditions. "
+            "Score low when the award is price-dominated or terms squeeze the margin.",
+            "weight": 3,
+        },
+        {
+            "headline": "Formal & legal risk",
+            "explanation": "Contract terms, liability exposure and certifications we lack. "
+            "Score low when mandatory certificates or unacceptable contract clauses block us.",
             "weight": 4,
         },
     ]
 
     async def extract_decision_matrix(self, doc_markdown: str) -> dict[str, Any]:
-        """Deterministic translation: parses `Category (weight N): description` lines
+        """Deterministic translation: parses `Headline (weight N): explanation` lines
         and a `threshold: N` line; falls back to the default category set."""
         text = doc_markdown or ""
         categories: list[dict[str, Any]] = []
         for m in re.finditer(r"(?m)^[-*•]?\s*(.+?)\s*\((?:weight|gewicht)\s*[:=]?\s*(\d)\)\s*:?\s*(.*)$", text, re.I):
             categories.append(
                 {
-                    "name": m.group(1).strip()[:255],
-                    "description": m.group(3).strip() or None,
+                    "headline": m.group(1).strip()[:255],
+                    "explanation": m.group(3).strip() or None,
                     "weight": min(5, max(1, int(m.group(2)))),
                 }
             )
@@ -132,12 +150,13 @@ class MockAIClient(AIClient):
     async def score_category(self, category: dict[str, Any], bid_text: str, intel: dict[str, Any]) -> dict[str, Any]:
         """Deterministic 0–5 score with a transparent rationale.
 
-        Competition-flavoured categories are driven by portal intelligence
-        (more likely competitors → lower score); everything else by evidence
-        overlap between the category and the bid's text corpus.
+        Grounded on headline + the expert's explanation: competition-flavoured
+        categories are driven by portal intelligence (more likely competitors →
+        lower score); everything else by evidence overlap between the category's
+        explanation and the bid's text corpus.
         """
-        name = (category.get("name") or "").lower()
-        desc = (category.get("description") or "").lower()
+        name = (category.get("headline") or "").lower()
+        desc = (category.get("explanation") or "").lower()
 
         if any(w in name + desc for w in ("competit", "wettbewerb", "konkurren")):
             n = len(intel.get("competitors", []))
@@ -207,6 +226,38 @@ class MockAIClient(AIClient):
             out.append({"kind": "questions", "date": snapshot["questions_deadline_at"], "source_link": src})
         return out
 
+    async def extract_required_documents(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+        return [
+            {"document_name": "Handelsregisterauszug", "description": "Aktueller Auszug aus dem Handelsregister (nicht älter als 3 Monate).", "category": "suitability"},
+            {"document_name": "Referenzen", "description": "Mindestens 3 Referenzprojekte über vergleichbare Dienstleistungen aus den letzten 3 Jahren.", "category": "suitability"},
+            {"document_name": "Projektteam CVs", "description": "Lebensläufe der vorgesehenen Schlüsselpersonen mit Nachweis der geforderten Zertifizierungen.", "category": "suitability"},
+            {"document_name": "Haftpflichtversicherung", "description": "Nachweis einer bestehenden Betriebshaftpflichtversicherung mit ausreichender Deckung.", "category": "suitability"},
+            {"document_name": "Eigenerklärung Ausschlussgründe", "description": "Eigenerklärung, dass keine Ausschlussgründe nach VgV vorliegen.", "category": "self-declaration"},
+            {"document_name": "Eigenerklärung Mindestlohn", "description": "Eigenerklärung zur Einhaltung des Mindestlohngesetzes (MiLoG).", "category": "self-declaration"},
+            {"document_name": "Preisblatt", "description": "Vollständig ausgefülltes Preisblatt im PDF- und GAEB-Format.", "category": "proposal"},
+            {"document_name": "Leistungskonzept", "description": "Detaillierte Beschreibung des angebotenen Konzepts zur Umsetzung des Leistungsverzeichnisses.", "category": "proposal"}
+        ]
+
+    async def extract_bidding_deadlines(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+        from datetime import datetime, UTC, timedelta
+        now = datetime.now(UTC)
+        out = []
+        sub_date = snapshot.get("deadline_at")
+        if sub_date:
+            out.append({"kind": "submission", "date": sub_date, "source_link": "notice"})
+        else:
+            out.append({"kind": "submission", "date": (now + timedelta(days=30)).isoformat().replace("+00:00", "Z"), "source_link": "notice"})
+
+        q_date = snapshot.get("questions_deadline_at") or snapshot.get("questions_deadline")
+        if q_date:
+            out.append({"kind": "questions", "date": q_date, "source_link": "notice"})
+        else:
+            out.append({"kind": "questions", "date": (now + timedelta(days=15)).isoformat().replace("+00:00", "Z"), "source_link": "notice"})
+
+        out.append({"kind": "registration", "date": (now + timedelta(days=10)).isoformat().replace("+00:00", "Z"), "source_link": "notice"})
+        out.append({"kind": "validity", "date": (now + timedelta(days=90)).isoformat().replace("+00:00", "Z"), "source_link": "notice"})
+        return out
+
     async def verify_document(self, requirement: str, doc_markdown: str) -> dict[str, Any]:
         text = (doc_markdown or "").lower()
         req_terms = [w for w in re.split(r"\W+", requirement.lower()) if len(w) > 4]
@@ -235,6 +286,55 @@ class MockAIClient(AIClient):
             "ai_verification": None,
         }
 
+REQUIRED_DOCUMENTS_PROMPT = """
+Du bist ein Experte für öffentliche Ausschreibungen.
+Analysiere die bereitgestellten Ausschreibungsdaten (und eventuelle Dokumententexte) und extrahiere eine Liste aller erforderlichen Nachweise und Unterlagen (Required Documents), die der Bieter einreichen muss.
+Kategorisiere jedes Dokument in eines der folgenden:
+- suitability (Eignungsnachweise wie Handelsregister, Referenzen, CVs)
+- self-declaration (Eigenerklärungen wie Mindestlohn, Sanktionen, keine Ausschlussgründe)
+- proposal (Angebotsunterlagen wie Preisblatt, Konzept, Formblätter)
+- consortium (Konsortium / Nachunternehmer Erklärungen)
+
+Antworte ausschließlich im JSON-Format.
+Struktur:
+{"documents": [{"document_name": "...", "description": "...", "category": "suitability|self-declaration|proposal|consortium"}]}
+""".strip()
+
+DEADLINES_PROMPT = """
+Du bist ein Experte für öffentliche Ausschreibungen.
+Extrahiere alle Fristen (Deadlines) für dieses Vergabeverfahren aus den bereitgestellten Daten.
+Bestimme die Fristen für:
+- submission: Abgabefrist für Angebote / Teilnahmeanträge
+- questions: Frist für Bieterfragen
+- registration: Registrierungsfrist / Teilnahmeantragsfrist
+- validity: Bindefrist / Zuschlagsfrist
+
+Antworte ausschließlich im JSON-Format.
+Struktur:
+{"deadlines": [{"kind": "submission|questions|registration|validity", "date": "ISO8601-Format", "source_link": "notice"}]}
+""".strip()
+
+
+async def _sync_prompt(prompt_id: str, system_message: str):
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                f"{AI_URL}/api/prompts",
+                json={
+                    "id": prompt_id,
+                    "name": prompt_id.replace("_", " ").title(),
+                    "slug": prompt_id,
+                    "system_message": system_message,
+                    "version": "1.0.0",
+                    "temperature": 0.1,
+                    "model": "gpt-4o",
+                    "description": f"Seeded from tender-bidding for {prompt_id}"
+                }
+            )
+    except Exception as e:
+        logger.warning(f"Failed to sync prompt {prompt_id} to AI service: {e}")
+
 
 class RealAIClient(AIClient):
     """Calls ai-connector. Deferred in v1 — falls back to mock behaviour."""
@@ -248,6 +348,58 @@ class RealAIClient(AIClient):
 
     async def extract_deadlines(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         return await self._fallback.extract_deadlines(snapshot)
+
+    async def extract_required_documents(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+        import httpx
+        try:
+            # Sync the prompt dynamically to AI connector
+            await _sync_prompt("bidding_required_documents", REQUIRED_DOCUMENTS_PROMPT)
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    f"{AI_URL}/api/inference",
+                    json={
+                        "prompt_id": "bidding_required_documents",
+                        "tender_data": snapshot,
+                        "output_structure": {
+                            "documents": [{"document_name": "str", "description": "str", "category": "str"}]
+                        }
+                    }
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("status") == "success":
+                        docs = data.get("data", {}).get("documents", [])
+                        if docs:
+                            return docs
+        except Exception as e:
+            logger.error(f"Error calling AI for required documents: {e}")
+        return await self._fallback.extract_required_documents(snapshot)
+
+    async def extract_bidding_deadlines(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+        import httpx
+        try:
+            # Sync the prompt dynamically to AI connector
+            await _sync_prompt("bidding_deadlines", DEADLINES_PROMPT)
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    f"{AI_URL}/api/inference",
+                    json={
+                        "prompt_id": "bidding_deadlines",
+                        "tender_data": snapshot,
+                        "output_structure": {
+                            "deadlines": [{"kind": "str", "date": "str", "source_link": "str"}]
+                        }
+                    }
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("status") == "success":
+                        deadlines = data.get("data", {}).get("deadlines", [])
+                        if deadlines:
+                            return deadlines
+        except Exception as e:
+            logger.error(f"Error calling AI for deadlines: {e}")
+        return await self._fallback.extract_bidding_deadlines(snapshot)
 
     async def verify_document(self, requirement: str, doc_markdown: str) -> dict[str, Any]:
         return await self._fallback.verify_document(requirement, doc_markdown)

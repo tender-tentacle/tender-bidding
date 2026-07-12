@@ -38,7 +38,7 @@ COLLABORATOR_ROLES = ("lead", "contributor", "reviewer")
 DOCUMENT_KINDS = ("tender", "reference", "profile", "certificate", "declaration", "supporting")
 # Sensitivity governs access/retention. "special" = GDPR special-category (court docs, CVs).
 SENSITIVITIES = ("normal", "personal", "special")
-KEYDATE_KINDS = ("submission", "questions", "validity")
+KEYDATE_KINDS = ("submission", "questions", "validity", "registration", "application")
 
 
 class Bid(Base):
@@ -77,6 +77,9 @@ class Bid(Base):
         back_populates="bid", cascade="all, delete-orphan", lazy="selectin"
     )
     key_dates: Mapped[list[KeyDate]] = relationship(back_populates="bid", cascade="all, delete-orphan", lazy="selectin")
+    required_documents: Mapped[list[RequiredDocument]] = relationship(
+        back_populates="bid", cascade="all, delete-orphan", lazy="selectin"
+    )
 
 
 class BidCollaborator(Base):
@@ -143,6 +146,19 @@ class KeyDate(Base):
     bid: Mapped[Bid] = relationship(back_populates="key_dates")
 
 
+class RequiredDocument(Base):
+    __tablename__ = "bid_required_document"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    bid_id: Mapped[str] = mapped_column(ForeignKey("bid.id"), index=True)
+    document_name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    category: Mapped[str | None] = mapped_column(String(100))  # suitability | self-declaration | proposal | consortium
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    bid: Mapped[Bid] = relationship(back_populates="required_documents")
+
+
 class Comment(Base):
     __tablename__ = "bid_comment"
 
@@ -185,7 +201,10 @@ class DecisionMatrix(Base):
     # Verdict rule: Σ(effective_score × weight) ≥ threshold → bid, else no_bid.
     threshold: Mapped[int] = mapped_column(Integer)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    # Expert-backend versioning (same pattern as the enriching config API).
+    version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
     categories: Mapped[list[DecisionCategory]] = relationship(
         back_populates="matrix", cascade="all, delete-orphan", lazy="selectin", order_by="DecisionCategory.order"
@@ -193,18 +212,37 @@ class DecisionMatrix(Base):
 
 
 class DecisionCategory(Base):
-    """One decision criterion ("sub step") of the matrix. Weight 1–5."""
+    """One decision criterion ("sub step") of the matrix. Weight 1–5.
+
+    `headline` is the short criterion label; `explanation` is the expert's
+    full intent in prose — the AI grounds its 0–5 scoring on both, so a richer
+    explanation directly improves the evaluation.
+    """
 
     __tablename__ = "bid_decision_category"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     matrix_id: Mapped[str] = mapped_column(ForeignKey("bid_decision_matrix.id"), index=True)
-    name: Mapped[str] = mapped_column(String(255))
-    description: Mapped[str | None] = mapped_column(Text)
+    headline: Mapped[str] = mapped_column(String(255))
+    explanation: Mapped[str | None] = mapped_column(Text)
     weight: Mapped[int] = mapped_column(Integer, default=3)  # 1–5
     order: Mapped[int] = mapped_column(Integer, default=0)
 
     matrix: Mapped[DecisionMatrix] = relationship(back_populates="categories")
+
+
+class DecisionMatrixHistory(Base):
+    """Version snapshots of the matrix (enriching-config-style history)."""
+
+    __tablename__ = "bid_decision_matrix_history"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    matrix_id: Mapped[str] = mapped_column(ForeignKey("bid_decision_matrix.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    change_summary: Mapped[str | None] = mapped_column(String(500))
+    created_by: Mapped[str | None] = mapped_column(String(255))
+    data: Mapped[dict | None] = mapped_column(JSON)  # full matrix snapshot at that version
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)
 
 
 class BidCategoryRating(Base):

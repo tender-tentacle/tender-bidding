@@ -29,4 +29,7 @@ BLOB_CONTAINER: str = os.getenv("BIDDING_BLOB_CONTAINER", "bid-documents")
 # ai-connector base URL (unused in mock mode).
 AI_URL: str = os.getenv("AI_URL", "http://ai:8004")
 
+# tender-enriching base URL
+ENRICHING_URL: str = os.getenv("ENRICHING_URL", "http://enriching:8002")
+
 ALLOWED_ORIGINS: str = os.getenv("ALLOWED_ORIGINS", "http://localhost:8009")
