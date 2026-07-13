@@ -50,17 +50,17 @@ async def test_real_ai_client_raises_on_failure(mocker):
     mock_response = mocker.Mock(spec=httpx.Response)
     mock_response.status_code = 500
     mock_response.text = "Internal Server Error"
-    
+
     mocker.patch("httpx.AsyncClient.post", return_value=mock_response)
     mocker.patch("core.ai_client._sync_prompt", return_value=None)
     mocker.patch("core.ai_client._configured_prompt", return_value="test prompt")
-    
+
     client = RealAIClient()
-    
+
     with pytest.raises(RuntimeError) as exc_info:
         await client.extract_required_documents({"source_ref": "test"})
     assert "status code 500" in str(exc_info.value)
-    
+
     with pytest.raises(RuntimeError) as exc_info:
         await client.extract_bidding_deadlines({"source_ref": "test"})
     assert "status code 500" in str(exc_info.value)
@@ -73,12 +73,12 @@ async def test_real_ai_client_raises_on_httpx_exception(mocker):
     mocker.patch("httpx.AsyncClient.post", side_effect=httpx.RequestError("Connection failed"))
     mocker.patch("core.ai_client._sync_prompt", return_value=None)
     mocker.patch("core.ai_client._configured_prompt", return_value="test prompt")
-    
+
     client = RealAIClient()
-    
+
     with pytest.raises(httpx.RequestError):
         await client.extract_required_documents({"source_ref": "test"})
-        
+
     with pytest.raises(httpx.RequestError):
         await client.extract_bidding_deadlines({"source_ref": "test"})
 

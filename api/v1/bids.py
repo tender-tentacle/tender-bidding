@@ -420,8 +420,8 @@ async def enrich_bid_requirements(body: EnrichBiddingPayload, request: Request, 
 
             # Fallback mockup URL for visual completeness in mock/test mode
             if not link_original_doc:
-                link_original_doc = f"https://example.com/mock-documents/{source_doc_name}"
-                link_parsed_doc = f"https://example.com/mock-documents/{source_doc_name}?parsed=true"
+                link_original_doc = f"/ms/dashboard/mock-documents/{source_doc_name}"
+                link_parsed_doc = f"/ms/dashboard/mock-documents/{source_doc_name}?parsed=true"
 
         is_mand = doc.get("is_mandatory")
         if is_mand is None:

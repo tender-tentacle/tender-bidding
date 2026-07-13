@@ -1,6 +1,7 @@
-import pytest
-import core.config
 import core.ai_client
+import core.config
+import pytest
+
 
 @pytest.fixture(autouse=True)
 def setup_real_ai(monkeypatch):
@@ -44,7 +45,7 @@ Erforderliche Unterlagen:
     assert isinstance(docs, list)
     assert len(docs) > 0
     names = {d["document_name"].lower() for d in docs}
-    
+
     print("Group extracted docs:", docs)
     # Check if the AI extracted relevant items from the text
     assert any("register" in n or "handelsregister" in n for n in names)
@@ -72,7 +73,7 @@ Anforderungen an den Bieter:
     assert isinstance(docs, list)
     assert len(docs) > 0
     names = {d["document_name"].lower() for d in docs}
-    
+
     print("Tender extracted docs:", docs)
     assert any("preisblatt" in n or "preis" in n for n in names)
     assert any("konzept" in n or "leistung" in n for n in names)
@@ -96,7 +97,7 @@ Der Bieter muss für dieses Los einreichen:
     assert isinstance(docs, list)
     assert len(docs) > 0
     names = {d["document_name"].lower() for d in docs}
-    
+
     print("Lot extracted docs:", docs)
     assert any("zertifikat" in n or "zertifizierung" in n or "iso" in n for n in names)
     assert any("ausschluss" in n or "eigenerklärung" in n for n in names)

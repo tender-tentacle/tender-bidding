@@ -60,7 +60,7 @@ async def init_db() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        
+
         # Safe migration patch: check and add new columns to bid_required_document
         from sqlalchemy import text
         if _url.startswith("sqlite"):

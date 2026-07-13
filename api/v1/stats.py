@@ -31,7 +31,7 @@ async def _count(db: AsyncSession, stmt) -> int:
 async def service_stats(db: AsyncSession = Depends(get_db)):
     """KPIs over the bidding DB: pipeline, detection output, deadlines, config state."""
     by_status_rows = (await db.execute(select(Bid.status, func.count()).group_by(Bid.status))).all()
-    bids_by_status = {status: count for status, count in by_status_rows}
+    bids_by_status = dict(by_status_rows)
 
     now = datetime.now(UTC)
     soon = now + timedelta(days=14)
@@ -64,5 +64,5 @@ async def service_stats(db: AsyncSession = Depends(get_db)):
         "human_overrides": overrides,
         "activity_events": await _count(db, select(func.count()).select_from(BidActivity)),
         "matrix": ({"name": matrix.name, "version": matrix.version, "threshold": matrix.threshold} if matrix else None),
-        "prompt_versions": {category: version for category, version in prompt_rows},
+        "prompt_versions": dict(prompt_rows),
     }
