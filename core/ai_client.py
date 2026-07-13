@@ -496,9 +496,10 @@ class RealAIClient(AIClient):
                         docs = data.get("data", {}).get("documents", [])
                         if docs:
                             return docs
+                raise RuntimeError(f"AI service returned status code {resp.status_code}: {resp.text}")
         except Exception as e:
             logger.error(f"Error calling AI for required documents: {e}")
-        return await self._fallback.extract_required_documents(snapshot)
+            raise
 
     async def extract_bidding_deadlines(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         import httpx
@@ -521,9 +522,10 @@ class RealAIClient(AIClient):
                         deadlines = data.get("data", {}).get("deadlines", [])
                         if deadlines:
                             return deadlines
+                raise RuntimeError(f"AI service returned status code {resp.status_code}: {resp.text}")
         except Exception as e:
             logger.error(f"Error calling AI for deadlines: {e}")
-        return await self._fallback.extract_bidding_deadlines(snapshot)
+            raise
 
     async def verify_document(self, requirement: str, doc_markdown: str) -> dict[str, Any]:
         return await self._fallback.verify_document(requirement, doc_markdown)

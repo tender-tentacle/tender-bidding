@@ -1,7 +1,7 @@
 """Unit tests: mock AI checklist split, verification, portal mapping."""
 
 import pytest
-from core.ai_client import AWARD, FORMAL, SUITABILITY, MockAIClient
+from core.ai_client import AWARD, FORMAL, SUITABILITY, MockAIClient, RealAIClient
 from services.portal_guide import portal_key_for
 
 
@@ -41,3 +41,44 @@ def test_portal_key_mapping():
     assert portal_key_for("TED Europe") == "ted-europe"
     assert portal_key_for("DTVP") == "dtvp"
     assert portal_key_for("unknown-portal") is None
+
+
+@pytest.mark.asyncio
+async def test_real_ai_client_raises_on_failure(mocker):
+    import httpx
+    # Mock httpx.AsyncClient.post to return a non-200 status code
+    mock_response = mocker.Mock(spec=httpx.Response)
+    mock_response.status_code = 500
+    mock_response.text = "Internal Server Error"
+    
+    mocker.patch("httpx.AsyncClient.post", return_value=mock_response)
+    mocker.patch("core.ai_client._sync_prompt", return_value=None)
+    mocker.patch("core.ai_client._configured_prompt", return_value="test prompt")
+    
+    client = RealAIClient()
+    
+    with pytest.raises(RuntimeError) as exc_info:
+        await client.extract_required_documents({"source_ref": "test"})
+    assert "status code 500" in str(exc_info.value)
+    
+    with pytest.raises(RuntimeError) as exc_info:
+        await client.extract_bidding_deadlines({"source_ref": "test"})
+    assert "status code 500" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_real_ai_client_raises_on_httpx_exception(mocker):
+    import httpx
+    # Mock httpx.AsyncClient.post to raise an httpx exception
+    mocker.patch("httpx.AsyncClient.post", side_effect=httpx.RequestError("Connection failed"))
+    mocker.patch("core.ai_client._sync_prompt", return_value=None)
+    mocker.patch("core.ai_client._configured_prompt", return_value="test prompt")
+    
+    client = RealAIClient()
+    
+    with pytest.raises(httpx.RequestError):
+        await client.extract_required_documents({"source_ref": "test"})
+        
+    with pytest.raises(httpx.RequestError):
+        await client.extract_bidding_deadlines({"source_ref": "test"})
+
