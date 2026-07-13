@@ -234,7 +234,8 @@ class MockAIClient(AIClient):
                 "category": "suitability",
                 "short_summary": "Handelsregisterauszug nicht älter als 3 Monate.",
                 "quote_original": "Zum Nachweis der Eignung ist ein aktueller Auszug aus dem Handelsregister (nicht älter als drei Monate ab dem Tag der Angebotsabgabe) vorzulegen.",
-                "source_doc_name": "Ausschreibungsunterlagen.pdf"
+                "source_doc_name": "Ausschreibungsunterlagen.pdf",
+                "is_mandatory": True
             },
             {
                 "document_name": "Referenzen",
@@ -242,7 +243,8 @@ class MockAIClient(AIClient):
                 "category": "suitability",
                 "short_summary": "Drei vergleichbare Referenzen der letzten drei Jahre.",
                 "quote_original": "Der Bieter muss mindestens drei Referenzen über vergleichbare Leistungen aus den letzten 3 Jahren vorweisen.",
-                "source_doc_name": "Vergabeunterlagen.pdf"
+                "source_doc_name": "Vergabeunterlagen.pdf",
+                "is_mandatory": False
             },
             {
                 "document_name": "Projektteam CVs",
@@ -250,7 +252,8 @@ class MockAIClient(AIClient):
                 "category": "suitability",
                 "short_summary": "Lebensläufe des Projektteams mit Zertifizierungsnachweis.",
                 "quote_original": "Projektteam CVs: Lebensläufe der vorgesehenen Schlüsselpersonen mit Nachweis der geforderten Zertifizierungen.",
-                "source_doc_name": "Projektbeschreibung.pdf"
+                "source_doc_name": "Projektbeschreibung.pdf",
+                "is_mandatory": True
             },
             {
                 "document_name": "Haftpflichtversicherung",
@@ -258,7 +261,8 @@ class MockAIClient(AIClient):
                 "category": "suitability",
                 "short_summary": "Nachweis einer ausreichenden Betriebshafpflichtversicherung.",
                 "quote_original": "Haftpflichtversicherung: Nachweis einer bestehenden Betriebshaftpflichtversicherung mit ausreichender Deckung.",
-                "source_doc_name": "Ausschreibungsunterlagen.pdf"
+                "source_doc_name": "Ausschreibungsunterlagen.pdf",
+                "is_mandatory": True
             },
             {
                 "document_name": "Eigenerklärung Ausschlussgründe",
@@ -266,7 +270,8 @@ class MockAIClient(AIClient):
                 "category": "self-declaration",
                 "short_summary": "Eigenerklärung zu Nichtvorliegen von Ausschlussgründen.",
                 "quote_original": "Eigenerklärung, dass keine Ausschlussgründe nach §§ 123, 124 GWB vorliegen.",
-                "source_doc_name": "Eigenerklaerungen.pdf"
+                "source_doc_name": "Eigenerklaerungen.pdf",
+                "is_mandatory": True
             },
             {
                 "document_name": "Eigenerklärung Mindestlohn",
@@ -274,7 +279,8 @@ class MockAIClient(AIClient):
                 "category": "self-declaration",
                 "short_summary": "MiLoG-Einhaltungserklärung.",
                 "quote_original": "Eigenerklärung zur Einhaltung des Mindestlohngesetzes (MiLoG) sowie landesspezifischer Tariftreuevorgaben.",
-                "source_doc_name": "Eigenerklaerungen.pdf"
+                "source_doc_name": "Eigenerklaerungen.pdf",
+                "is_mandatory": True
             },
             {
                 "document_name": "Preisblatt",
@@ -282,7 +288,8 @@ class MockAIClient(AIClient):
                 "category": "proposal",
                 "short_summary": "Ausgefülltes Preisblatt (PDF / GAEB).",
                 "quote_original": "Das Preisblatt ist vollständig auszufüllen und als PDF sowie im GAEB-Format hochzuladen.",
-                "source_doc_name": "Preisblatt.pdf"
+                "source_doc_name": "Preisblatt.pdf",
+                "is_mandatory": True
             },
             {
                 "document_name": "Leistungskonzept",
@@ -290,7 +297,8 @@ class MockAIClient(AIClient):
                 "category": "proposal",
                 "short_summary": "Konzeptbeschreibung zur Umsetzung des LV.",
                 "quote_original": "Der Bieter hat ein detailliertes Leistungskonzept einzureichen, das auf die Anforderungen der Leistungsbeschreibung eingeht.",
-                "source_doc_name": "Vergabeunterlagen.pdf"
+                "source_doc_name": "Vergabeunterlagen.pdf",
+                "is_mandatory": True
             },
         ]
 
@@ -381,10 +389,11 @@ Extrahiere für jedes Dokument zusätzlich:
 - short_summary: Eine prägnante, ein- oder zweisätzige Zusammenfassung der Anforderungen für dieses Dokument auf Deutsch.
 - quote_original: Das exakte Zitat aus den Ausschreibungstexten oder Dokumententexten auf Deutsch, das diese Dokumentenanforderung belegt.
 - source_doc_name: Der Dateiname oder die URL des Dokuments, aus dem das Zitat stammt (z. B. "Vergabeunterlagen.pdf"). Wenn die Quelle die Hauptausschreibung ist, gib "notice" an.
+- is_mandatory: Ein boolescher Wert (true oder false). Setze auf true, wenn das Dokument zwingend/obligatorisch einzureichen ist (z. B. Handelsregisterauszug, Preisblatt). Setze auf false, wenn das Dokument nur empfohlen oder optional ist (z. B. freiwillige Referenzen).
 
 Antworte ausschließlich im JSON-Format.
 Struktur:
-{"documents": [{"document_name": "...", "description": "...", "category": "suitability|self-declaration|proposal|consortium", "short_summary": "...", "quote_original": "...", "source_doc_name": "..."}]}
+{"documents": [{"document_name": "...", "description": "...", "category": "suitability|self-declaration|proposal|consortium", "short_summary": "...", "quote_original": "...", "source_doc_name": "...", "is_mandatory": true}]}
 """.strip()
 
 DEADLINES_PROMPT = """
@@ -474,7 +483,8 @@ class RealAIClient(AIClient):
                                     "category": "str",
                                     "short_summary": "str",
                                     "quote_original": "str",
-                                    "source_doc_name": "str"
+                                    "source_doc_name": "str",
+                                    "is_mandatory": "bool"
                                 }
                             ]
                         },

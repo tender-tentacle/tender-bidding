@@ -161,6 +161,7 @@ class RequiredDocument(Base):
     link_original_doc: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     link_parsed_doc: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     quote_original: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_mandatory: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     bid: Mapped[Bid] = relationship(back_populates="required_documents")

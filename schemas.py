@@ -131,6 +131,7 @@ class RequiredDocumentOut(BaseModel):
     link_original_doc: str | None = None
     link_parsed_doc: str | None = None
     quote_original: str | None = None
+    is_mandatory: bool = True
     created_at: datetime
 
 

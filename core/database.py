@@ -70,7 +70,8 @@ async def init_db() -> None:
                 ("short_summary", "TEXT"),
                 ("link_original_doc", "VARCHAR(1000)"),
                 ("link_parsed_doc", "VARCHAR(1000)"),
-                ("quote_original", "TEXT")
+                ("quote_original", "TEXT"),
+                ("is_mandatory", "BOOLEAN DEFAULT 1")
             ]:
                 if col not in existing_cols:
                     await conn.execute(text(f"ALTER TABLE bid_required_document ADD COLUMN {col} {col_type}"))
@@ -80,7 +81,8 @@ async def init_db() -> None:
                 ("short_summary", "NVARCHAR(MAX)"),
                 ("link_original_doc", "NVARCHAR(1000)"),
                 ("link_parsed_doc", "NVARCHAR(1000)"),
-                ("quote_original", "NVARCHAR(MAX)")
+                ("quote_original", "NVARCHAR(MAX)"),
+                ("is_mandatory", "BIT DEFAULT 1")
             ]:
                 check_sql = f"""
                 IF COL_LENGTH('bid_required_document', '{col}') IS NULL

@@ -423,6 +423,10 @@ async def enrich_bid_requirements(body: EnrichBiddingPayload, request: Request, 
                 link_original_doc = f"https://example.com/mock-documents/{source_doc_name}"
                 link_parsed_doc = f"https://example.com/mock-documents/{source_doc_name}?parsed=true"
 
+        is_mand = doc.get("is_mandatory")
+        if is_mand is None:
+            is_mand = True
+
         db_doc = RequiredDocument(
             bid_id=bid.id,
             document_name=doc.get("document_name") or "Unnamed Document",
@@ -432,6 +436,7 @@ async def enrich_bid_requirements(body: EnrichBiddingPayload, request: Request, 
             link_original_doc=link_original_doc,
             link_parsed_doc=link_parsed_doc,
             quote_original=doc.get("quote_original"),
+            is_mandatory=is_mand,
         )
         db.add(db_doc)
 
