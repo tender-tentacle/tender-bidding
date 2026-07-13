@@ -232,41 +232,65 @@ class MockAIClient(AIClient):
                 "document_name": "Handelsregisterauszug",
                 "description": "Aktueller Auszug aus dem Handelsregister (nicht älter als 3 Monate).",
                 "category": "suitability",
+                "short_summary": "Handelsregisterauszug nicht älter als 3 Monate.",
+                "quote_original": "Zum Nachweis der Eignung ist ein aktueller Auszug aus dem Handelsregister (nicht älter als drei Monate ab dem Tag der Angebotsabgabe) vorzulegen.",
+                "source_doc_name": "Ausschreibungsunterlagen.pdf"
             },
             {
                 "document_name": "Referenzen",
                 "description": "Mindestens 3 Referenzprojekte über vergleichbare Dienstleistungen aus den letzten 3 Jahren.",
                 "category": "suitability",
+                "short_summary": "Drei vergleichbare Referenzen der letzten drei Jahre.",
+                "quote_original": "Der Bieter muss mindestens drei Referenzen über vergleichbare Leistungen aus den letzten 3 Jahren vorweisen.",
+                "source_doc_name": "Vergabeunterlagen.pdf"
             },
             {
                 "document_name": "Projektteam CVs",
                 "description": "Lebensläufe der vorgesehenen Schlüsselpersonen mit Nachweis der geforderten Zertifizierungen.",
                 "category": "suitability",
+                "short_summary": "Lebensläufe des Projektteams mit Zertifizierungsnachweis.",
+                "quote_original": "Projektteam CVs: Lebensläufe der vorgesehenen Schlüsselpersonen mit Nachweis der geforderten Zertifizierungen.",
+                "source_doc_name": "Projektbeschreibung.pdf"
             },
             {
                 "document_name": "Haftpflichtversicherung",
                 "description": "Nachweis einer bestehenden Betriebshaftpflichtversicherung mit ausreichender Deckung.",
                 "category": "suitability",
+                "short_summary": "Nachweis einer ausreichenden Betriebshafpflichtversicherung.",
+                "quote_original": "Haftpflichtversicherung: Nachweis einer bestehenden Betriebshaftpflichtversicherung mit ausreichender Deckung.",
+                "source_doc_name": "Ausschreibungsunterlagen.pdf"
             },
             {
                 "document_name": "Eigenerklärung Ausschlussgründe",
                 "description": "Eigenerklärung, dass keine Ausschlussgründe nach VgV vorliegen.",
                 "category": "self-declaration",
+                "short_summary": "Eigenerklärung zu Nichtvorliegen von Ausschlussgründen.",
+                "quote_original": "Eigenerklärung, dass keine Ausschlussgründe nach §§ 123, 124 GWB vorliegen.",
+                "source_doc_name": "Eigenerklaerungen.pdf"
             },
             {
                 "document_name": "Eigenerklärung Mindestlohn",
                 "description": "Eigenerklärung zur Einhaltung des Mindestlohngesetzes (MiLoG).",
                 "category": "self-declaration",
+                "short_summary": "MiLoG-Einhaltungserklärung.",
+                "quote_original": "Eigenerklärung zur Einhaltung des Mindestlohngesetzes (MiLoG) sowie landesspezifischer Tariftreuevorgaben.",
+                "source_doc_name": "Eigenerklaerungen.pdf"
             },
             {
                 "document_name": "Preisblatt",
                 "description": "Vollständig ausgefülltes Preisblatt im PDF- und GAEB-Format.",
                 "category": "proposal",
+                "short_summary": "Ausgefülltes Preisblatt (PDF / GAEB).",
+                "quote_original": "Das Preisblatt ist vollständig auszufüllen und als PDF sowie im GAEB-Format hochzuladen.",
+                "source_doc_name": "Preisblatt.pdf"
             },
             {
                 "document_name": "Leistungskonzept",
                 "description": "Detaillierte Beschreibung des angebotenen Konzepts zur Umsetzung des Leistungsverzeichnisses.",
                 "category": "proposal",
+                "short_summary": "Konzeptbeschreibung zur Umsetzung des LV.",
+                "quote_original": "Der Bieter hat ein detailliertes Leistungskonzept einzureichen, das auf die Anforderungen der Leistungsbeschreibung eingeht.",
+                "source_doc_name": "Vergabeunterlagen.pdf"
             },
         ]
 
@@ -353,9 +377,14 @@ Kategorisiere jedes Dokument in eines der folgenden:
 - proposal (Angebotsunterlagen wie Preisblatt, Konzept, Formblätter)
 - consortium (Konsortium / Nachunternehmer Erklärungen)
 
+Extrahiere für jedes Dokument zusätzlich:
+- short_summary: Eine prägnante, ein- oder zweisätzige Zusammenfassung der Anforderungen für dieses Dokument auf Deutsch.
+- quote_original: Das exakte Zitat aus den Ausschreibungstexten oder Dokumententexten auf Deutsch, das diese Dokumentenanforderung belegt.
+- source_doc_name: Der Dateiname oder die URL des Dokuments, aus dem das Zitat stammt (z. B. "Vergabeunterlagen.pdf"). Wenn die Quelle die Hauptausschreibung ist, gib "notice" an.
+
 Antworte ausschließlich im JSON-Format.
 Struktur:
-{"documents": [{"document_name": "...", "description": "...", "category": "suitability|self-declaration|proposal|consortium"}]}
+{"documents": [{"document_name": "...", "description": "...", "category": "suitability|self-declaration|proposal|consortium", "short_summary": "...", "quote_original": "...", "source_doc_name": "..."}]}
 """.strip()
 
 DEADLINES_PROMPT = """
@@ -438,7 +467,16 @@ class RealAIClient(AIClient):
                         "prompt_id": "bidding_required_documents",
                         "tender_data": snapshot,
                         "output_structure": {
-                            "documents": [{"document_name": "str", "description": "str", "category": "str"}]
+                            "documents": [
+                                {
+                                    "document_name": "str",
+                                    "description": "str",
+                                    "category": "str",
+                                    "short_summary": "str",
+                                    "quote_original": "str",
+                                    "source_doc_name": "str"
+                                }
+                            ]
                         },
                     },
                 )

@@ -157,6 +157,10 @@ class RequiredDocument(Base):
     document_name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
     category: Mapped[str | None] = mapped_column(String(100))  # suitability | self-declaration | proposal | consortium
+    short_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    link_original_doc: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    link_parsed_doc: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    quote_original: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     bid: Mapped[Bid] = relationship(back_populates="required_documents")

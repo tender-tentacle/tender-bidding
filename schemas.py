@@ -127,6 +127,10 @@ class RequiredDocumentOut(BaseModel):
     document_name: str
     description: str | None = None
     category: str | None = None
+    short_summary: str | None = None
+    link_original_doc: str | None = None
+    link_parsed_doc: str | None = None
+    quote_original: str | None = None
     created_at: datetime
 
 

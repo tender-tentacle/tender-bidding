@@ -60,6 +60,35 @@ async def init_db() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        
+        # Safe migration patch: check and add new columns to bid_required_document
+        from sqlalchemy import text
+        if _url.startswith("sqlite"):
+            cols_res = await conn.execute(text("PRAGMA table_info(bid_required_document)"))
+            existing_cols = {row[1] for row in cols_res.fetchall()}
+            for col, col_type in [
+                ("short_summary", "TEXT"),
+                ("link_original_doc", "VARCHAR(1000)"),
+                ("link_parsed_doc", "VARCHAR(1000)"),
+                ("quote_original", "TEXT")
+            ]:
+                if col not in existing_cols:
+                    await conn.execute(text(f"ALTER TABLE bid_required_document ADD COLUMN {col} {col_type}"))
+                    logger.info(f"SQLite migration: Added column {col} to bid_required_document")
+        else:
+            for col, col_type in [
+                ("short_summary", "NVARCHAR(MAX)"),
+                ("link_original_doc", "NVARCHAR(1000)"),
+                ("link_parsed_doc", "NVARCHAR(1000)"),
+                ("quote_original", "NVARCHAR(MAX)")
+            ]:
+                check_sql = f"""
+                IF COL_LENGTH('bid_required_document', '{col}') IS NULL
+                BEGIN
+                    ALTER TABLE bid_required_document ADD {col} {col_type} NULL
+                END
+                """
+                await conn.execute(text(check_sql))
     logger.info(f"🔌 Bidding DB ready at {_url.split('@')[-1]}")
 
     from services.portal_guide import seed_portal_guides
