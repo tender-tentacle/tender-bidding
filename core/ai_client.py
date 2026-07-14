@@ -229,6 +229,7 @@ class MockAIClient(AIClient):
     async def extract_required_documents(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         return [
             {
+                "id": "doc_handelsregister",
                 "document_name": "Handelsregisterauszug",
                 "description": "Aktueller Auszug aus dem Handelsregister (nicht älter als 3 Monate).",
                 "category": "suitability",
@@ -238,24 +239,67 @@ class MockAIClient(AIClient):
                 "is_mandatory": True
             },
             {
-                "document_name": "Referenzen",
-                "description": "Mindestens 3 Referenzprojekte über vergleichbare Dienstleistungen aus den letzten 3 Jahren.",
+                "id": "doc_referenz_1",
+                "document_name": "Referenz 1 - Netzwerktechnik",
+                "description": "Erste vergleichbare Referenz über Netzwerktechnik/Dienstleistungen aus den letzten drei Jahren.",
                 "category": "suitability",
-                "short_summary": "Drei vergleichbare Referenzen der letzten drei Jahre.",
+                "short_summary": "Vergleichbare Referenz über Netzwerktechnik der letzten 3 Jahre.",
                 "quote_original": "Der Bieter muss mindestens drei Referenzen über vergleichbare Leistungen aus den letzten 3 Jahren vorweisen.",
                 "source_doc_name": "Vergabeunterlagen.pdf",
                 "is_mandatory": False
             },
             {
-                "document_name": "Projektteam CVs",
-                "description": "Lebensläufe der vorgesehenen Schlüsselpersonen mit Nachweis der geforderten Zertifizierungen.",
+                "id": "doc_referenz_2",
+                "document_name": "Referenz 2 - Projektkomplexität",
+                "description": "Zweite vergleichbare Referenz mit ähnlicher Projektkomplexität aus den letzten drei Jahren.",
                 "category": "suitability",
-                "short_summary": "Lebensläufe des Projektteams mit Zertifizierungsnachweis.",
+                "short_summary": "Referenz über vergleichbare Komplexität der letzten 3 Jahre.",
+                "quote_original": "Der Bieter muss mindestens drei Referenzen über vergleichbare Leistungen aus den letzten 3 Jahren vorweisen.",
+                "source_doc_name": "Vergabeunterlagen.pdf",
+                "is_mandatory": False
+            },
+            {
+                "id": "doc_referenz_3",
+                "document_name": "Referenz 3 - Öffentlicher Sektor",
+                "description": "Dritte vergleichbare Referenz für ein Projekt im öffentlichen Sektor aus den letzten drei Jahren.",
+                "category": "suitability",
+                "short_summary": "Referenz aus einem Projekt im öffentlichen Sektor der letzten 3 Jahre.",
+                "quote_original": "Der Bieter muss mindestens drei Referenzen über vergleichbare Leistungen aus den letzten 3 Jahren vorweisen.",
+                "source_doc_name": "Vergabeunterlagen.pdf",
+                "is_mandatory": False
+            },
+            {
+                "id": "doc_cv_project_leader",
+                "document_name": "Lebenslauf Projektleiter",
+                "description": "Lebenslauf des vorgesehenen Projektleiters mit Nachweis einer ITIL/Scrum-Zertifizierung.",
+                "category": "suitability",
+                "short_summary": "Lebenslauf des Projektleiters mit Zertifizierungsnachweis.",
                 "quote_original": "Projektteam CVs: Lebensläufe der vorgesehenen Schlüsselpersonen mit Nachweis der geforderten Zertifizierungen.",
                 "source_doc_name": "Projektbeschreibung.pdf",
                 "is_mandatory": True
             },
             {
+                "id": "doc_cv_senior_dev_1",
+                "document_name": "Lebenslauf Senior-Entwickler 1",
+                "description": "Lebenslauf des ersten Senior-Entwicklers mit Nachweis relevanter Fachzertifikate.",
+                "category": "suitability",
+                "short_summary": "Lebenslauf des ersten Senior-Entwicklers mit Zertifikatsnachweis.",
+                "quote_original": "Projektteam CVs: Lebensläufe der vorgesehenen Schlüsselpersonen mit Nachweis der geforderten Zertifizierungen.",
+                "source_doc_name": "Projektbeschreibung.pdf",
+                "is_mandatory": True
+            },
+            {
+                "id": "doc_cv_senior_dev_2",
+                "document_name": "Lebenslauf Senior-Entwickler 2",
+                "description": "Lebenslauf des zweiten Senior-Entwicklers mit Nachweis relevanter Fachzertifikate.",
+                "category": "suitability",
+                "short_summary": "Lebenslauf des zweiten Senior-Entwicklers mit Zertifikatsnachweis.",
+                "quote_original": "Projektteam CVs: Lebensläufe der vorgesehenen Schlüsselpersonen mit Nachweis der geforderten Zertifizierungen.",
+                "source_doc_name": "Projektbeschreibung.pdf",
+                "is_mandatory": True
+            },
+            {
+                "id": "doc_haftpflicht",
                 "document_name": "Haftpflichtversicherung",
                 "description": "Nachweis einer bestehenden Betriebshaftpflichtversicherung mit ausreichender Deckung.",
                 "category": "suitability",
@@ -265,6 +309,7 @@ class MockAIClient(AIClient):
                 "is_mandatory": True
             },
             {
+                "id": "doc_eigenerklaerung_ausschluss",
                 "document_name": "Eigenerklärung Ausschlussgründe",
                 "description": "Eigenerklärung, dass keine Ausschlussgründe nach VgV vorliegen.",
                 "category": "self-declaration",
@@ -274,6 +319,7 @@ class MockAIClient(AIClient):
                 "is_mandatory": True
             },
             {
+                "id": "doc_eigenerklaerung_mindestlohn",
                 "document_name": "Eigenerklärung Mindestlohn",
                 "description": "Eigenerklärung zur Einhaltung des Mindestlohngesetzes (MiLoG).",
                 "category": "self-declaration",
@@ -283,6 +329,7 @@ class MockAIClient(AIClient):
                 "is_mandatory": True
             },
             {
+                "id": "doc_preisblatt",
                 "document_name": "Preisblatt",
                 "description": "Vollständig ausgefülltes Preisblatt im PDF- und GAEB-Format.",
                 "category": "proposal",
@@ -292,6 +339,7 @@ class MockAIClient(AIClient):
                 "is_mandatory": True
             },
             {
+                "id": "doc_leistungskonzept",
                 "document_name": "Leistungskonzept",
                 "description": "Detaillierte Beschreibung des angebotenen Konzepts zur Umsetzung des Leistungsverzeichnisses.",
                 "category": "proposal",
@@ -386,6 +434,7 @@ Kategorisiere jedes Dokument in eines der folgenden:
 - consortium (Konsortium / Nachunternehmer Erklärungen)
 
 Extrahiere für jedes Dokument zusätzlich:
+- id: Ein eindeutiger String-Identifikator (z. B. "doc_handelsregister" oder "doc_referenz_1").
 - short_summary: Eine prägnante, ein- oder zweisätzige Zusammenfassung der Anforderungen für dieses Dokument auf Deutsch.
 - quote_original: Das exakte Zitat aus den Ausschreibungstexten oder Dokumententexten auf Deutsch, das diese Dokumentenanforderung belegt.
 - source_doc_name: Der Dateiname oder die URL des Dokuments, aus dem das Zitat stammt (z. B. "Vergabeunterlagen.pdf"). Wenn die Quelle die Hauptausschreibung ist, gib "notice" an.
@@ -393,7 +442,7 @@ Extrahiere für jedes Dokument zusätzlich:
 
 Antworte ausschließlich im JSON-Format.
 Struktur:
-{"documents": [{"document_name": "...", "description": "...", "category": "suitability|self-declaration|proposal|consortium", "short_summary": "...", "quote_original": "...", "source_doc_name": "...", "is_mandatory": true}]}
+{"documents": [{"id": "...", "document_name": "...", "description": "...", "category": "suitability|self-declaration|proposal|consortium", "short_summary": "...", "quote_original": "...", "source_doc_name": "...", "is_mandatory": true}]}
 """.strip()
 
 DEADLINES_PROMPT = """
@@ -478,6 +527,7 @@ class RealAIClient(AIClient):
                         "output_structure": {
                             "documents": [
                                 {
+                                    "id": "str",
                                     "document_name": "str",
                                     "description": "str",
                                     "category": "str",

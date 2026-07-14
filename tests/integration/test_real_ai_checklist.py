@@ -44,6 +44,8 @@ Erforderliche Unterlagen:
     docs = await client.extract_required_documents(snapshot)
     assert isinstance(docs, list)
     assert len(docs) > 0
+    for d in docs:
+        assert "id" in d and d["id"] is not None and d["id"] != ""
     names = {d["document_name"].lower() for d in docs}
 
     print("Group extracted docs:", docs)

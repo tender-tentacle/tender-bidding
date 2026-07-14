@@ -75,7 +75,12 @@ async def init_db() -> None:
                 ("link_original_doc", "VARCHAR(1000)"),
                 ("link_parsed_doc", "VARCHAR(1000)"),
                 ("quote_original", "TEXT"),
-                ("is_mandatory", "BOOLEAN DEFAULT 1")
+                ("is_mandatory", "BOOLEAN DEFAULT 1"),
+                ("status", "VARCHAR(20) DEFAULT 'open'"),
+                ("user_override", "BOOLEAN DEFAULT 0"),
+                ("uploaded_by", "VARCHAR(255)"),
+                ("uploaded_at", "DATETIME"),
+                ("uploaded_filename", "VARCHAR(500)")
             ]:
                 if col not in existing_cols:
                     await conn.execute(text(f"ALTER TABLE bid_required_document ADD COLUMN {col} {col_type}"))
@@ -86,7 +91,12 @@ async def init_db() -> None:
                 ("link_original_doc", "NVARCHAR(1000)"),
                 ("link_parsed_doc", "NVARCHAR(1000)"),
                 ("quote_original", "NVARCHAR(MAX)"),
-                ("is_mandatory", "BIT DEFAULT 1")
+                ("is_mandatory", "BIT DEFAULT 1"),
+                ("status", "NVARCHAR(20) DEFAULT 'open'"),
+                ("user_override", "BIT DEFAULT 0"),
+                ("uploaded_by", "NVARCHAR(255)"),
+                ("uploaded_at", "DATETIMEOFFSET"),
+                ("uploaded_filename", "NVARCHAR(500)")
             ]:
                 check_sql = f"""
                 IF COL_LENGTH('bid_required_document', '{col}') IS NULL

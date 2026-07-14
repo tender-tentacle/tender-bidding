@@ -132,6 +132,11 @@ class RequiredDocumentOut(BaseModel):
     link_parsed_doc: str | None = None
     quote_original: str | None = None
     is_mandatory: bool = True
+    status: str = "open"
+    user_override: bool = False
+    uploaded_by: str | None = None
+    uploaded_at: datetime | None = None
+    uploaded_filename: str | None = None
     created_at: datetime
 
 

@@ -9,11 +9,20 @@ async def test_extract_required_documents():
     ai = MockAIClient()
     docs = await ai.extract_required_documents({"title": "Test Tender"})
     assert len(docs) > 0
+    for d in docs:
+        assert "id" in d and d["id"] is not None and d["id"] != ""
     categories = {d["category"] for d in docs}
     assert "suitability" in categories
     assert "self-declaration" in categories
     assert "proposal" in categories
     assert any(d["document_name"] == "Handelsregisterauszug" for d in docs)
+    # Check that CVs are precise sub-elements
+    cv_docs = [d for d in docs if "cv" in d["document_name"].lower() or "lebenslauf" in d["document_name"].lower()]
+    assert len(cv_docs) >= 3  # E.g. Project Lead CV, Senior Dev 1 CV, Senior Dev 2 CV
+    # Check for three sub-elements of Referenzen
+    ref_docs = [d for d in docs if "referenz" in d["document_name"].lower()]
+    assert len(ref_docs) >= 3
+
 
 
 @pytest.mark.asyncio

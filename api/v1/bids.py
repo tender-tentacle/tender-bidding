@@ -428,6 +428,7 @@ async def enrich_bid_requirements(body: EnrichBiddingPayload, request: Request, 
             is_mand = True
 
         db_doc = RequiredDocument(
+            id=doc.get("id"),  # Use extracted ID directly
             bid_id=bid.id,
             document_name=doc.get("document_name") or "Unnamed Document",
             description=doc.get("description"),

@@ -164,6 +164,12 @@ class RequiredDocument(Base):
     is_mandatory: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
+    status: Mapped[str] = mapped_column(String(20), default="open")  # open | done | needs_review | gap
+    user_override: Mapped[bool] = mapped_column(Boolean, default=False)
+    uploaded_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    uploaded_filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     bid: Mapped[Bid] = relationship(back_populates="required_documents")
 
 

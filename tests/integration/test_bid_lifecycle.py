@@ -138,3 +138,74 @@ async def test_portal_guide_and_deadlines_endpoints():
         assert guide["registration_steps"]
         dls = (await client.get(f"/bids/{bid['id']}/deadlines")).json()
         assert all("days_remaining" in d for d in dls)
+
+
+@pytest.mark.asyncio
+async def test_required_document_upload_and_override(mocker):
+    # Mock enriching HTTP call
+    import httpx
+    mock_response = mocker.MagicMock(spec=httpx.Response)
+    mock_response.status_code = 200
+    mock_response.json = lambda: {
+        "id": "11111111-2222-3333-4444-555555555555",
+        "external_id": "LIFE-TEST-123",
+        "title": "Cloud Platform Services",
+        "customer": "Stadt Musterstadt",
+        "source_system": "Öffentliche Vergabe",
+        "assigned_user_id": "user-456",
+    }
+    original_get = httpx.AsyncClient.get
+
+    async def mock_get(self, url, *args, **kwargs):
+        if "enriching" in str(url):
+            return mock_response
+        return await original_get(self, url, *args, **kwargs)
+
+    mocker.patch("httpx.AsyncClient.get", mock_get)
+
+    async with api_client() as client:
+        # Enrich the bid first, which creates bid + populates required_documents
+        enrich_resp = await client.post(
+            "/bids/enrich", json={"source_id": "11111111-2222-3333-4444-555555555555", "source_kind": "tender"}
+        )
+        assert enrich_resp.status_code == 200
+        bid = enrich_resp.json()
+        print("BID SERIALIZED:", bid)
+        get_res = await client.get(f"/bids/{bid['id']}")
+        print("GET DETAIL STATUS:", get_res.status_code)
+        print("GET DETAIL BODY:", get_res.json())
+        detail = get_res.json()
+        
+        # Verify required document list exists and default states
+        assert len(detail["required_documents"]) > 0
+        rd = detail["required_documents"][0]
+        assert rd["status"] == "open"
+        assert rd["user_override"] is False
+
+        # 1. Upload a file for this specific required document
+        content = b"Aktueller Auszug aus dem Handelsregister."
+        files = {"file": ("handelsregister.txt", io.BytesIO(content), "text/plain")}
+        r = await client.post(
+            f"/bids/{bid['id']}/required-documents/{rd['id']}/upload",
+            files=files,
+            headers={"X-User-ID": "test-uploader@email.com", "X-User-Name": "Uploader Name"}
+        )
+        assert r.status_code == 201
+        res = r.json()
+        assert res["uploaded_filename"] == "handelsregister.txt"
+        assert res["uploaded_by"] == "test-uploader@email.com"
+
+        # Verify state is updated to done due to matching text
+        detail_after = (await client.get(f"/bids/{bid['id']}")).json()
+        rd_after = next(d for d in detail_after["required_documents"] if d["id"] == rd["id"])
+        assert rd_after["status"] == "done"
+
+        # 2. Human override status to open
+        over_resp = await client.post(
+            f"/bids/{bid['id']}/required-documents/{rd['id']}/override",
+            json={"status": "open"}
+        )
+        assert over_resp.status_code == 200
+        assert over_resp.json()["status"] == "open"
+        assert over_resp.json()["user_override"] is True
+
