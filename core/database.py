@@ -18,20 +18,27 @@ logger = setup_logger("bidding-db")
 
 _url = DATABASE_URL
 if not _url:
-    import sys
-    if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
-        # Local SQLite fallback. Prefer /data (Docker named volume) when writable,
-        # else the service directory — never crash on an unwritable /data (dev/tests).
-        data_dir = os.getenv("SQLITE_DATA_DIR", "/data")
-        try:
-            os.makedirs(data_dir, exist_ok=True)
-            if not os.access(data_dir, os.W_OK):
-                raise OSError(f"{data_dir} not writable")
-        except OSError:
-            data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        _url = f"sqlite+aiosqlite:///{data_dir}/bidding.db"
+    sql_server = os.getenv("SQL_SERVER")
+    if sql_server:
+        sql_user = os.getenv("SQL_USER", "azureuser")
+        sql_password = os.getenv("SQL_PASSWORD", "")
+        db_name = os.getenv("SQL_DATABASE", "bidding")
+        _url = f"mssql+aioodbc://{sql_user}:{sql_password}@{sql_server}:1433/{db_name}?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=no&MARS_Connection=yes"
     else:
-        raise ValueError("DATABASE_URL environment variable is required")
+        import sys
+        if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
+            # Local SQLite fallback. Prefer /data (Docker named volume) when writable,
+            # else the service directory — never crash on an unwritable /data (dev/tests).
+            data_dir = os.getenv("SQLITE_DATA_DIR", "/data")
+            try:
+                os.makedirs(data_dir, exist_ok=True)
+                if not os.access(data_dir, os.W_OK):
+                    raise OSError(f"{data_dir} not writable")
+            except OSError:
+                data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            _url = f"sqlite+aiosqlite:///{data_dir}/bidding.db"
+        else:
+            raise ValueError("DATABASE_URL environment variable is required")
 
 DATABASE_URL_RESOLVED = _url
 
