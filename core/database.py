@@ -18,16 +18,20 @@ logger = setup_logger("bidding-db")
 
 _url = DATABASE_URL
 if not _url:
-    # Local SQLite fallback. Prefer /data (Docker named volume) when writable,
-    # else the service directory — never crash on an unwritable /data (dev/tests).
-    data_dir = os.getenv("SQLITE_DATA_DIR", "/data")
-    try:
-        os.makedirs(data_dir, exist_ok=True)
-        if not os.access(data_dir, os.W_OK):
-            raise OSError(f"{data_dir} not writable")
-    except OSError:
-        data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    _url = f"sqlite+aiosqlite:///{data_dir}/bidding.db"
+    import sys
+    if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
+        # Local SQLite fallback. Prefer /data (Docker named volume) when writable,
+        # else the service directory — never crash on an unwritable /data (dev/tests).
+        data_dir = os.getenv("SQLITE_DATA_DIR", "/data")
+        try:
+            os.makedirs(data_dir, exist_ok=True)
+            if not os.access(data_dir, os.W_OK):
+                raise OSError(f"{data_dir} not writable")
+        except OSError:
+            data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        _url = f"sqlite+aiosqlite:///{data_dir}/bidding.db"
+    else:
+        raise ValueError("DATABASE_URL environment variable is required")
 
 DATABASE_URL_RESOLVED = _url
 
