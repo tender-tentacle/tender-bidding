@@ -54,6 +54,7 @@ async def create_bid_from_snapshot(db: AsyncSession, payload) -> tuple[Bid, bool
         portal_key=portal_key_for(snap.get("source_system")),
         lots_in_scope=[lot.get("lot_id") or lot.get("lot_number") for lot in snap.get("lots", [])],
         cpv_codes=snap.get("cpv_codes") or [],
+        selection_criteria=snap.get("selection_criteria"),
         status="exploring" if provisional else "draft",
     )
     bid.checklist_items = await build_checklist(snap)

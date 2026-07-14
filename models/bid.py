@@ -53,6 +53,7 @@ class Bid(Base):
     enriching_id: Mapped[str | None] = mapped_column(String(64), index=True)
     lots_in_scope: Mapped[list | None] = mapped_column(JSON, default=list)
     cpv_codes: Mapped[list | None] = mapped_column(JSON, default=list)  # from the tender snapshot
+    selection_criteria: Mapped[dict | None] = mapped_column(JSON)
 
     driver_user_id: Mapped[str | None] = mapped_column(String(255), index=True)
     title: Mapped[str] = mapped_column(String(1000))

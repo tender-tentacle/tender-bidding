@@ -30,6 +30,7 @@ class BidRelayPayload(BaseModel):
     document_text: str | None = None
     description: str | None = None
     cpv_codes: list[str] = []
+    selection_criteria: dict | None = None
     lots: list[LotSnapshot] = []
     # True = tender only marked "interesting" (provisional workspace, status
     # "exploring"); False = triaged as a real bid (or promotes an exploring one).
@@ -190,6 +191,7 @@ class FormalGate(BaseModel):
 
 class BidDetail(BidSummary):
     source_kind: str
+    selection_criteria: dict | None = None
     lots_in_scope: list | None = None
     cluster: str | None = None
     loss_reason: str | None = None
