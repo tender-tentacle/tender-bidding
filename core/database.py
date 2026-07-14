@@ -92,6 +92,12 @@ async def init_db() -> None:
                 if col not in existing_cols:
                     await conn.execute(text(f"ALTER TABLE bid_required_document ADD COLUMN {col} {col_type}"))
                     logger.info(f"SQLite migration: Added column {col} to bid_required_document")
+
+            cols_res = await conn.execute(text("PRAGMA table_info(bid)"))
+            existing_cols = {row[1] for row in cols_res.fetchall()}
+            if "selection_criteria" not in existing_cols:
+                await conn.execute(text("ALTER TABLE bid ADD COLUMN selection_criteria JSON"))
+                logger.info("SQLite migration: Added column selection_criteria to bid")
         else:
             for col, col_type in [
                 ("short_summary", "NVARCHAR(MAX)"),
@@ -112,6 +118,15 @@ async def init_db() -> None:
                 END
                 """
                 await conn.execute(text(check_sql))
+
+            check_sql_bid = """
+            IF COL_LENGTH('bid', 'selection_criteria') IS NULL
+            BEGIN
+                ALTER TABLE bid ADD selection_criteria NVARCHAR(MAX) NULL
+            END
+            """
+            await conn.execute(text(check_sql_bid))
+            
     logger.info(f"🔌 Bidding DB ready at {_url.split('@')[-1]}")
 
     from services.portal_guide import seed_portal_guides

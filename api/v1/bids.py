@@ -4,6 +4,7 @@ deadlines, portal guide, activity."""
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Annotated
 
 from core.database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -66,12 +67,12 @@ def _days_remaining(dt: datetime | None) -> int | None:
 
 
 @router.get("", response_model=list[BidSummary])
-async def list_bids(db: AsyncSession = Depends(get_db)):
+async def list_bids(db: Annotated[AsyncSession, Depends(get_db)]):
     return (await db.execute(select(Bid).order_by(Bid.updated_at.desc()))).scalars().all()
 
 
 @router.get("/by-source/{source_ref}", response_model=BidDetail)
-async def get_bid_by_source(source_ref: str, db: AsyncSession = Depends(get_db)):
+async def get_bid_by_source(source_ref: str, db: Annotated[AsyncSession, Depends(get_db)]):
     """Lookup by the enriching-domain id (tender external_id).
 
     This is the dashboard's entry point: it knows tenders, not bid ids. Accepts
@@ -100,6 +101,7 @@ async def get_bid_by_source(source_ref: str, db: AsyncSession = Depends(get_db))
                     if ext_id:
                         bid = await get_by_source_ref(db, ext_id)
         except Exception:
+            # Ignore errors and proceed without a bid (fallback best-effort behavior)
             pass
 
     if not bid:
@@ -108,12 +110,12 @@ async def get_bid_by_source(source_ref: str, db: AsyncSession = Depends(get_db))
 
 
 @router.get("/{bid_id}", response_model=BidDetail)
-async def get_bid(bid_id: str, db: AsyncSession = Depends(get_db)):
+async def get_bid(bid_id: str, db: Annotated[AsyncSession, Depends(get_db)]):
     return _detail(await _load(db, bid_id))
 
 
 @router.post("/{bid_id}/status", response_model=BidDetail)
-async def update_status(bid_id: str, body: StatusUpdate, request: Request, db: AsyncSession = Depends(get_db)):
+async def update_status(bid_id: str, body: StatusUpdate, request: Request, db: Annotated[AsyncSession, Depends(get_db)]):
     bid = await _load(db, bid_id)
     if body.status not in BID_STATUSES:
         raise HTTPException(status_code=400, detail=f"Invalid status. Allowed: {BID_STATUSES}")
@@ -139,7 +141,7 @@ async def update_status(bid_id: str, body: StatusUpdate, request: Request, db: A
 
 
 @router.post("/{bid_id}/collaborators", response_model=CollaboratorOut, status_code=201)
-async def add_collaborator(bid_id: str, body: CollaboratorIn, request: Request, db: AsyncSession = Depends(get_db)):
+async def add_collaborator(bid_id: str, body: CollaboratorIn, request: Request, db: Annotated[AsyncSession, Depends(get_db)]):
     bid = await _load(db, bid_id)
     collab = BidCollaborator(bid_id=bid.id, user_id=body.user_id, role=body.role)
     db.add(collab)
@@ -150,7 +152,7 @@ async def add_collaborator(bid_id: str, body: CollaboratorIn, request: Request, 
 
 
 @router.post("/{bid_id}/regenerate", response_model=BidDetail)
-async def regenerate(bid_id: str, payload: dict, request: Request, db: AsyncSession = Depends(get_db)):
+async def regenerate(bid_id: str, payload: dict, request: Request, db: Annotated[AsyncSession, Depends(get_db)]):
     """Re-import an amended notice / Bieterfrage answer and additively diff the checklist."""
     bid = await _load(db, bid_id)
     snap = snapshot_dict(payload)
@@ -168,7 +170,7 @@ async def regenerate(bid_id: str, payload: dict, request: Request, db: AsyncSess
 
 
 @router.get("/{bid_id}/deadlines", response_model=list[KeyDateOut])
-async def get_deadlines(bid_id: str, db: AsyncSession = Depends(get_db)):
+async def get_deadlines(bid_id: str, db: Annotated[AsyncSession, Depends(get_db)]):
     rows = (await db.execute(select(KeyDate).where(KeyDate.bid_id == bid_id))).scalars().all()
     out = []
     for kd in rows:
@@ -179,7 +181,7 @@ async def get_deadlines(bid_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{bid_id}/portal-guide")
-async def get_portal_guide(bid_id: str, db: AsyncSession = Depends(get_db)):
+async def get_portal_guide(bid_id: str, db: Annotated[AsyncSession, Depends(get_db)]):
     bid = await _load(db, bid_id)
     if not bid.portal_key:
         return {"portal_key": None, "note": "No portal guide mapped for this source."}
@@ -197,7 +199,7 @@ async def get_portal_guide(bid_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{bid_id}/activity", response_model=list[ActivityOut])
-async def get_activity(bid_id: str, db: AsyncSession = Depends(get_db)):
+async def get_activity(bid_id: str, db: Annotated[AsyncSession, Depends(get_db)]):
     return (
         (
             await db.execute(
@@ -210,7 +212,7 @@ async def get_activity(bid_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{bid_id}/score")
-async def get_score(bid_id: str, db: AsyncSession = Depends(get_db)):
+async def get_score(bid_id: str, db: Annotated[AsyncSession, Depends(get_db)]):
     """Transparent readiness score: weighted criteria, each with its own detail line."""
     from services.scoring import compute_score
 
@@ -218,7 +220,7 @@ async def get_score(bid_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{bid_id}/recommendation")
-async def get_recommendation(bid_id: str, db: AsyncSession = Depends(get_db)):
+async def get_recommendation(bid_id: str, db: Annotated[AsyncSession, Depends(get_db)]):
     """Bid / no-bid / review advice with explicit reasons and reusable cross-bid evidence."""
     from services.scoring import recommend
 
@@ -226,7 +228,7 @@ async def get_recommendation(bid_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{bid_id}/match")
-async def rematch_documents(bid_id: str, request: Request, db: AsyncSession = Depends(get_db)):
+async def rematch_documents(bid_id: str, request: Request, db: Annotated[AsyncSession, Depends(get_db)]):
     """Re-match uploads (own + cross-bid corpus) against open requirements."""
     from services.scoring import match_documents
 
@@ -238,7 +240,7 @@ async def rematch_documents(bid_id: str, request: Request, db: AsyncSession = De
 
 
 @router.post("/{bid_id}/match/accept")
-async def accept_match(bid_id: str, body: MatchDecision, request: Request, db: AsyncSession = Depends(get_db)):
+async def accept_match(bid_id: str, body: MatchDecision, request: Request, db: Annotated[AsyncSession, Depends(get_db)]):
     """Accept a proposed corpus match: link the evidence with full provenance.
 
     The item is NOT auto-completed — a human still adapts the document; the
@@ -283,7 +285,7 @@ async def accept_match(bid_id: str, body: MatchDecision, request: Request, db: A
 
 
 @router.post("/{bid_id}/match/reject")
-async def reject_match(bid_id: str, body: MatchDecision, request: Request, db: AsyncSession = Depends(get_db)):
+async def reject_match(bid_id: str, body: MatchDecision, request: Request, db: Annotated[AsyncSession, Depends(get_db)]):
     """Reject a proposed match. The item is untouched; the why is kept as a learning signal."""
     bid = await _load(db, bid_id)
     item = next((i for i in bid.checklist_items if i.id == body.checklist_item_id), None)
@@ -305,25 +307,11 @@ async def reject_match(bid_id: str, body: MatchDecision, request: Request, db: A
     return {"checklist_item_id": item.id, "rejected_document_id": body.document_id}
 
 
-@router.post("/enrich", response_model=BidDetail)
-async def enrich_bid_requirements(body: EnrichBiddingPayload, request: Request, db: AsyncSession = Depends(get_db)):
-    """Pull tender or group details from tender-enriching, extract required documents/deadlines via AI, and save them."""
+async def _fetch_tender_data(source_id: str, source_kind: str) -> dict:
+    """Helper to fetch tender/group details from the enriching service."""
     import httpx
-    from core.ai_client import get_ai_client
     from core.config import ENRICHING_URL
-    from models.bid import KeyDate
-    from services.bid_service import create_bid_from_snapshot, get_by_source_ref
-
-    source_id = body.source_id
-    source_kind = body.source_kind
-
-    # 1. Fetch details from tender-enriching
     tender_data = {}
-    source_ref = source_id
-    title = "Untitled Bid"
-    customer = None
-    source_system = "Unknown"
-    driver_user_id = None
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -334,11 +322,6 @@ async def enrich_bid_requirements(body: EnrichBiddingPayload, request: Request, 
                         status_code=resp.status_code, detail=f"Failed to fetch tender from enriching: {resp.text}"
                     )
                 tender_data = resp.json()
-                source_ref = tender_data.get("external_id") or source_id
-                title = tender_data.get("title") or title
-                customer = tender_data.get("customer")
-                source_system = tender_data.get("source_system") or source_system
-                driver_user_id = tender_data.get("assigned_user_id")
             else:
                 resp = await client.get(f"{ENRICHING_URL}/api/v1/tenders/groups/{source_id}")
                 if resp.status_code != 200:
@@ -346,10 +329,6 @@ async def enrich_bid_requirements(body: EnrichBiddingPayload, request: Request, 
                         status_code=resp.status_code, detail=f"Failed to fetch group from enriching: {resp.text}"
                     )
                 tender_data = resp.json()
-                source_ref = source_id  # groups don't have external_id, use group ID
-                title = tender_data.get("title") or title
-                customer = tender_data.get("customer")
-                source_system = "Group"
 
                 # Combine parsed documents text for the group
                 combined_texts = []
@@ -364,10 +343,110 @@ async def enrich_bid_requirements(body: EnrichBiddingPayload, request: Request, 
     except httpx.RequestError as exc:
         raise HTTPException(status_code=503, detail=f"Enriching service at {ENRICHING_URL} is unreachable: {exc}")
 
+    return tender_data
+
+
+def _resolve_attachment_links(source_doc_name: str | None, attachments: list) -> tuple[str | None, str | None]:
+    """Helper to resolve original and parsed links from actual attachments."""
+    link_original_doc = None
+    link_parsed_doc = None
+
+    if source_doc_name and source_doc_name.lower() != "notice":
+        # Attempt to resolve from actual attachments
+        name_lower = source_doc_name.lower()
+        for att in attachments:
+            att_title = (att.get("title") or "").lower()
+            att_url = att.get("url") or ""
+            att_filename = att_url.split("/")[-1].lower()
+            if (name_lower in att_title or att_title in name_lower or
+                    name_lower in att_filename or att_filename in name_lower):
+                link_original_doc = att.get("url")
+                link_parsed_doc = att.get("url")
+                break
+
+        # Fallback mockup URL for visual completeness in mock/test mode
+        if not link_original_doc:
+            link_original_doc = f"/ms/dashboard/mock-documents/{source_doc_name}"
+            link_parsed_doc = f"/ms/dashboard/mock-documents/{source_doc_name}?parsed=true"
+
+    return link_original_doc, link_parsed_doc
+
+
+def _create_required_documents(db: AsyncSession, docs_payload: list, attachments: list, bid_id: str):
+    """Helper to create RequiredDocument database models."""
+    for doc in docs_payload:
+        source_doc_name = doc.get("source_doc_name")
+        link_original, link_parsed = _resolve_attachment_links(source_doc_name, attachments)
+
+        is_mand = doc.get("is_mandatory")
+        if is_mand is None:
+            is_mand = True
+
+        db_doc = RequiredDocument(
+            id=doc.get("id"),  # Use extracted ID directly
+            bid_id=bid_id,
+            document_name=doc.get("document_name") or "Unnamed Document",
+            description=doc.get("description"),
+            category=doc.get("category"),
+            short_summary=doc.get("short_summary"),
+            link_original_doc=link_original,
+            link_parsed_doc=link_parsed,
+            quote_original=doc.get("quote_original"),
+            is_mandatory=is_mand,
+        )
+        db.add(db_doc)
+
+
+def _create_key_dates(db: AsyncSession, deadlines_payload: list, bid_id: str):
+    """Helper to parse dates and build KeyDate database models."""
+    from datetime import datetime
+    for dl in deadlines_payload:
+        dt_val = dl.get("date")
+        if isinstance(dt_val, str):
+            try:
+                dt_val = datetime.fromisoformat(dt_val.replace("Z", "+00:00"))
+            except ValueError:
+                # Invalid date format, fallback to None
+                dt_val = None
+        db_dl = KeyDate(
+            bid_id=bid_id,
+            kind=dl.get("kind") or "submission",
+            date=dt_val,
+            source_link=dl.get("source_link") or "notice",
+        )
+        db.add(db_dl)
+
+
+@router.post("/enrich", response_model=BidDetail)
+async def enrich_bid_requirements(
+    body: EnrichBiddingPayload, request: Request, db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Pull tender or group details from tender-enriching, extract required documents/deadlines via AI, and save them."""
+    from core.ai_client import get_ai_client
+    from services.bid_service import create_bid_from_snapshot, get_by_source_ref
+
+    source_id = body.source_id
+    source_kind = body.source_kind
+
+    # 1. Fetch details from tender-enriching
+    tender_data = await _fetch_tender_data(source_id, source_kind)
+
+    if source_kind == "tender":
+        source_ref = tender_data.get("external_id") or source_id
+        title = tender_data.get("title") or "Untitled Bid"
+        customer = tender_data.get("customer")
+        source_system = tender_data.get("source_system") or "Unknown"
+        driver_user_id = tender_data.get("assigned_user_id")
+    else:
+        source_ref = source_id
+        title = tender_data.get("title") or "Untitled Bid"
+        customer = tender_data.get("customer")
+        source_system = "Group"
+        driver_user_id = None
+
     # 2. Idempotently find/create Bid workspace
     bid = await get_by_source_ref(db, source_ref)
     if not bid:
-        # Create a new bid. We reuse the create_bid_from_snapshot logic.
         snapshot = {
             "source_ref": source_ref,
             "source_kind": source_kind,
@@ -378,8 +457,6 @@ async def enrich_bid_requirements(body: EnrichBiddingPayload, request: Request, 
             "provisional": False,
         }
         bid, _ = await create_bid_from_snapshot(db, snapshot)
-    # Remember the enriching-domain UUID so the dashboard can look the bid up
-    # by either id (source_ref = external_id stays the idempotency key).
     bid.enriching_id = source_id
 
     # 3. Call AI Client to extract required documents & deadlines
@@ -392,7 +469,6 @@ async def enrich_bid_requirements(body: EnrichBiddingPayload, request: Request, 
     await db.execute(delete(KeyDate).where(KeyDate.bid_id == bid.id))
 
     # 5. Insert new ones
-    # Collect all attachments from tender_data (including nested member tenders for groups)
     attachments = []
     if "attachments" in tender_data:
         attachments.extend(tender_data["attachments"] or [])
@@ -400,63 +476,8 @@ async def enrich_bid_requirements(body: EnrichBiddingPayload, request: Request, 
         if "attachments" in member:
             attachments.extend(member["attachments"] or [])
 
-    for doc in docs_payload:
-        source_doc_name = doc.get("source_doc_name")
-        link_original_doc = None
-        link_parsed_doc = None
-
-        if source_doc_name and source_doc_name.lower() != "notice":
-            # Attempt to resolve from actual attachments
-            name_lower = source_doc_name.lower()
-            for att in attachments:
-                att_title = (att.get("title") or "").lower()
-                att_url = att.get("url") or ""
-                att_filename = att_url.split("/")[-1].lower()
-                if (name_lower in att_title or att_title in name_lower or
-                        name_lower in att_filename or att_filename in name_lower):
-                    link_original_doc = att.get("url")
-                    link_parsed_doc = att.get("url")
-                    break
-
-            # Fallback mockup URL for visual completeness in mock/test mode
-            if not link_original_doc:
-                link_original_doc = f"/ms/dashboard/mock-documents/{source_doc_name}"
-                link_parsed_doc = f"/ms/dashboard/mock-documents/{source_doc_name}?parsed=true"
-
-        is_mand = doc.get("is_mandatory")
-        if is_mand is None:
-            is_mand = True
-
-        db_doc = RequiredDocument(
-            id=doc.get("id"),  # Use extracted ID directly
-            bid_id=bid.id,
-            document_name=doc.get("document_name") or "Unnamed Document",
-            description=doc.get("description"),
-            category=doc.get("category"),
-            short_summary=doc.get("short_summary"),
-            link_original_doc=link_original_doc,
-            link_parsed_doc=link_parsed_doc,
-            quote_original=doc.get("quote_original"),
-            is_mandatory=is_mand,
-        )
-        db.add(db_doc)
-
-    for dl in deadlines_payload:
-        from datetime import datetime
-
-        dt_val = dl.get("date")
-        if isinstance(dt_val, str):
-            try:
-                dt_val = datetime.fromisoformat(dt_val.replace("Z", "+00:00"))
-            except ValueError:
-                dt_val = None
-        db_dl = KeyDate(
-            bid_id=bid.id,
-            kind=dl.get("kind") or "submission",
-            date=dt_val,
-            source_link=dl.get("source_link") or "notice",
-        )
-        db.add(db_dl)
+    _create_required_documents(db, docs_payload, attachments, bid.id)
+    _create_key_dates(db, deadlines_payload, bid.id)
 
     bid.version += 1
     activity.record(
