@@ -1,10 +1,18 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
+const crossoriginPlugin = () => ({
+  name: 'crossorigin-use-credentials',
+  transformIndexHtml(html: string) {
+    return html.replace(/crossorigin/g, 'crossorigin="use-credentials"');
+  }
+});
+
+
 // Served by FastAPI under /ms/bidding/ in the ecosystem; base is relative so the
 // built assets resolve behind the nginx path prefix.
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), crossoriginPlugin()],
   base: "./",
   server: {
     port: 5174,

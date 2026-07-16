@@ -374,6 +374,7 @@ def _resolve_attachment_links(source_doc_name: str | None, attachments: list) ->
 
 def _create_required_documents(db: AsyncSession, docs_payload: list, attachments: list, bid_id: str):
     """Helper to create RequiredDocument database models."""
+    import hashlib
     for doc in docs_payload:
         source_doc_name = doc.get("source_doc_name")
         link_original, link_parsed = _resolve_attachment_links(source_doc_name, attachments)
@@ -382,8 +383,11 @@ def _create_required_documents(db: AsyncSession, docs_payload: list, attachments
         if is_mand is None:
             is_mand = True
 
+        raw_id = doc.get("id") or ""
+        doc_unique_id = hashlib.md5(f"{bid_id}_{raw_id}".encode()).hexdigest()
+
         db_doc = RequiredDocument(
-            id=doc.get("id"),  # Use extracted ID directly
+            id=doc_unique_id,
             bid_id=bid_id,
             document_name=doc.get("document_name") or "Unnamed Document",
             description=doc.get("description"),

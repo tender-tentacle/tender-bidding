@@ -70,6 +70,8 @@ async def init_db() -> None:
     import models.bid  # noqa: F401 — register mappers with Base.metadata
 
     async with engine.begin() as conn:
+        from core.schema_validator import verify_schema_integrity
+        await conn.run_sync(verify_schema_integrity, Base)
         await conn.run_sync(Base.metadata.create_all)
 
         # Safe migration patch: check and add new columns to bid_required_document
@@ -87,7 +89,8 @@ async def init_db() -> None:
                 ("user_override", "BOOLEAN DEFAULT 0"),
                 ("uploaded_by", "VARCHAR(255)"),
                 ("uploaded_at", "DATETIME"),
-                ("uploaded_filename", "VARCHAR(500)")
+                ("uploaded_filename", "VARCHAR(500)"),
+                ("extracted_metadata", "JSON")
             ]:
                 if col not in existing_cols:
                     await conn.execute(text(f"ALTER TABLE bid_required_document ADD COLUMN {col} {col_type}"))
@@ -98,6 +101,12 @@ async def init_db() -> None:
             if "selection_criteria" not in existing_cols:
                 await conn.execute(text("ALTER TABLE bid ADD COLUMN selection_criteria JSON"))
                 logger.info("SQLite migration: Added column selection_criteria to bid")
+
+            cols_res = await conn.execute(text("PRAGMA table_info(bid_checklist_item)"))
+            existing_cols = {row[1] for row in cols_res.fetchall()}
+            if "metadata_json" not in existing_cols:
+                await conn.execute(text("ALTER TABLE bid_checklist_item ADD COLUMN metadata_json JSON"))
+                logger.info("SQLite migration: Added column metadata_json to bid_checklist_item")
         else:
             for col, col_type in [
                 ("short_summary", "NVARCHAR(MAX)"),
@@ -109,7 +118,8 @@ async def init_db() -> None:
                 ("user_override", "BIT DEFAULT 0"),
                 ("uploaded_by", "NVARCHAR(255)"),
                 ("uploaded_at", "DATETIMEOFFSET"),
-                ("uploaded_filename", "NVARCHAR(500)")
+                ("uploaded_filename", "NVARCHAR(500)"),
+                ("extracted_metadata", "NVARCHAR(MAX)")
             ]:
                 check_sql = f"""
                 IF COL_LENGTH('bid_required_document', '{col}') IS NULL
@@ -126,7 +136,15 @@ async def init_db() -> None:
             END
             """
             await conn.execute(text(check_sql_bid))
-            
+
+            check_sql_checklist = """
+            IF COL_LENGTH('bid_checklist_item', 'metadata_json') IS NULL
+            BEGIN
+                ALTER TABLE bid_checklist_item ADD metadata_json NVARCHAR(MAX) NULL
+            END
+            """
+            await conn.execute(text(check_sql_checklist))
+
     logger.info(f"🔌 Bidding DB ready at {_url.split('@')[-1]}")
 
     from services.portal_guide import seed_portal_guides

@@ -15,7 +15,7 @@ from tests.helpers import api_client
 
 # What the dashboard's BidPreparation component depends on per response.
 BID_FIELDS = {"id", "source_ref", "title", "status", "required_documents", "key_dates", "checklist_items", "selection_criteria"}
-REQUIRED_DOC_FIELDS = {"document_name", "description", "category", "status", "user_override"}
+REQUIRED_DOC_FIELDS = {"document_name", "description", "category", "status", "user_override", "extracted_metadata"}
 KEY_DATE_FIELDS = {"kind", "date", "days_remaining"}
 
 

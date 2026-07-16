@@ -109,6 +109,7 @@ class ChecklistItem(Base):
     source_link: Mapped[str | None] = mapped_column(String(1000))  # where the requirement came from
     status: Mapped[str] = mapped_column(String(20), default="open", index=True)
     ai_verification: Mapped[dict | None] = mapped_column(JSON)  # {status, detail}
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # ESPD 4C extracted criteria
     assignee_user_id: Mapped[str | None] = mapped_column(String(255), index=True)
     lot_scope: Mapped[str | None] = mapped_column(String(50))  # None = bid-global, else lot id
     order: Mapped[int] = mapped_column(Integer, default=0)
@@ -163,6 +164,7 @@ class RequiredDocument(Base):
     link_parsed_doc: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     quote_original: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_mandatory: Mapped[bool] = mapped_column(Boolean, default=True)
+    extracted_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     status: Mapped[str] = mapped_column(String(20), default="open")  # open | done | needs_review | gap

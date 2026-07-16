@@ -52,7 +52,18 @@ async def version():
     return {"version": os.getenv("DEPLOY_TIMESTAMP", "unknown"), "service": os.getenv("APP_NAME", "bidding")}
 
 
-from api.v1 import bids, checklist, comments, config, documents, internal, library, matrix, stats, required_docs  # noqa: E402
+from api.v1 import (  # noqa: E402
+    bids,
+    checklist,
+    comments,
+    config,
+    documents,
+    internal,
+    library,
+    matrix,
+    required_docs,
+    stats,
+)
 
 for r in (
     internal.router,

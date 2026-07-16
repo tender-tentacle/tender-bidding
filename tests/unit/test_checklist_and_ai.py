@@ -26,6 +26,31 @@ async def test_consortium_item_only_when_hinted():
 
 
 @pytest.mark.asyncio
+async def test_mock_ai_extract_required_documents_with_4c():
+    ai = MockAIClient()
+    snapshot = {
+        "source_ref": "X",
+        "selection_criteria": {
+            "technical_ability": {
+                "references": "At least 3 references",
+                "educational_and_professional_qualifications": "Must have Scrum Master"
+            }
+        }
+    }
+    docs = await ai.extract_required_documents(snapshot)
+
+    ref_doc = next((d for d in docs if d["id"] == "doc_espd_references"), None)
+    assert ref_doc is not None
+    assert ref_doc["extracted_metadata"]["espd_part"] == "4C.1"
+    assert ref_doc["extracted_metadata"]["references"] == "At least 3 references"
+
+    prof_doc = next((d for d in docs if d["id"] == "doc_espd_profiles"), None)
+    assert prof_doc is not None
+    assert prof_doc["extracted_metadata"]["espd_part"] == "4C.6"
+    assert prof_doc["extracted_metadata"]["qualifications"] == "Must have Scrum Master"
+
+
+@pytest.mark.asyncio
 async def test_verify_document_matched_vs_gap():
     ai = MockAIClient()
     matched = await ai.verify_document("Personnel concept with CVs", "Here are the CVs and personnel qualifications.")

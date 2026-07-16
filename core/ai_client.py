@@ -42,7 +42,10 @@ class AIClient:
     async def extract_bidding_deadlines(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         raise NotImplementedError
 
-    async def verify_document(self, requirement: str, doc_markdown: str) -> dict[str, Any]:
+    async def verify_document(self, requirement: str, document_markdown: str) -> dict[str, str]:
+        raise NotImplementedError
+
+    async def extract_document_metadata(self, target_text: str, document_markdown: str) -> dict[str, Any]:
         raise NotImplementedError
 
     async def semantic_scores(self, query: str, texts: list[str]) -> list[float]:
@@ -213,6 +216,29 @@ class MockAIClient(AIClient):
                     FORMAL, "commitment_declaration", "§47 commitment declaration from each consortium partner", cited
                 )
             )
+
+        # Parse ESPD 4C structure from selection_criteria
+        sel_criteria = snapshot.get("selection_criteria") or {}
+        tech_ability = sel_criteria.get("technical_ability") or {}
+
+        # 4C.1/4C.2 References
+        if tech_ability.get("references"):
+            items.append(
+                self._item(SUITABILITY, "reference", "References / Past Performance (ESPD 4C.1)", cited, metadata_json={"espd_part": "4C.1", "references": tech_ability.get("references")})
+            )
+
+        # 4C.6 Profiles/CVs
+        if tech_ability.get("educational_and_professional_qualifications"):
+            items.append(
+                self._item(SUITABILITY, "profile", "Personnel CVs / Qualifications (ESPD 4C.6)", cited, metadata_json={"espd_part": "4C.6", "qualifications": tech_ability.get("educational_and_professional_qualifications")})
+            )
+
+        # 4C.8 Manpower
+        if tech_ability.get("average_annual_manpower"):
+            items.append(
+                self._item(SUITABILITY, "capacity", "Average Annual Manpower (ESPD 4C.8)", cited, metadata_json={"espd_part": "4C.8", "manpower": tech_ability.get("average_annual_manpower")})
+            )
+
         for i, it in enumerate(items):
             it["order"] = i
         return items
@@ -226,8 +252,18 @@ class MockAIClient(AIClient):
             out.append({"kind": "questions", "date": snapshot["questions_deadline_at"], "source_link": src})
         return out
 
+    async def extract_document_metadata(self, target_text: str, document_markdown: str) -> dict[str, Any]:
+        """Mock extraction."""
+        return {
+            "extracted_metadata": {
+                "espd_part": "4C.1",
+                "project_title": "Mock Project",
+                "person_name": "Max Mustermann"
+            }
+        }
+
     async def extract_required_documents(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
-        return [
+        base_docs: list[dict[str, Any]] = [
             {
                 "id": "doc_handelsregister",
                 "document_name": "Handelsregisterauszug",
@@ -259,21 +295,11 @@ class MockAIClient(AIClient):
                 "is_mandatory": False
             },
             {
-                "id": "doc_referenz_3",
-                "document_name": "Referenz 3 - Öffentlicher Sektor",
-                "description": "Dritte vergleichbare Referenz für ein Projekt im öffentlichen Sektor aus den letzten drei Jahren.",
-                "category": "suitability",
-                "short_summary": "Referenz aus einem Projekt im öffentlichen Sektor der letzten 3 Jahre.",
-                "quote_original": "Der Bieter muss mindestens drei Referenzen über vergleichbare Leistungen aus den letzten 3 Jahren vorweisen.",
-                "source_doc_name": "Vergabeunterlagen.pdf",
-                "is_mandatory": False
-            },
-            {
-                "id": "doc_cv_project_leader",
+                "id": "doc_cv_project_lead",
                 "document_name": "Lebenslauf Projektleiter",
-                "description": "Lebenslauf des vorgesehenen Projektleiters mit Nachweis einer ITIL/Scrum-Zertifizierung.",
+                "description": "Lebenslauf des vorgesehenen Projektleiters.",
                 "category": "suitability",
-                "short_summary": "Lebenslauf des Projektleiters mit Zertifizierungsnachweis.",
+                "short_summary": "Lebenslauf Projektleiter",
                 "quote_original": "Projektteam CVs: Lebensläufe der vorgesehenen Schlüsselpersonen mit Nachweis der geforderten Zertifizierungen.",
                 "source_doc_name": "Projektbeschreibung.pdf",
                 "is_mandatory": True
@@ -350,6 +376,38 @@ class MockAIClient(AIClient):
             },
         ]
 
+        # Parse ESPD 4C structure from selection_criteria and add as RequiredDocuments
+        sel_criteria = snapshot.get("selection_criteria") or {}
+        tech_ability = sel_criteria.get("technical_ability") or {}
+
+        if tech_ability.get("references"):
+            base_docs.append({
+                "id": "doc_espd_references",
+                "document_name": "ESPD 4C.1 - References",
+                "description": "Nachweis von Referenzen entsprechend ESPD 4C.",
+                "category": "suitability",
+                "short_summary": "Referenzen gemäß ESPD",
+                "quote_original": "Gemäß ESPD Anforderung 4C.1",
+                "source_doc_name": "ESPD.xml",
+                "is_mandatory": True,
+                "extracted_metadata": {"espd_part": "4C.1", "references": tech_ability.get("references")}
+            })
+
+        if tech_ability.get("educational_and_professional_qualifications"):
+            base_docs.append({
+                "id": "doc_espd_profiles",
+                "document_name": "ESPD 4C.6 - Qualifications",
+                "description": "Nachweis von Qualifikationen entsprechend ESPD 4C.",
+                "category": "suitability",
+                "short_summary": "Qualifikationen gemäß ESPD",
+                "quote_original": "Gemäß ESPD Anforderung 4C.6",
+                "source_doc_name": "ESPD.xml",
+                "is_mandatory": True,
+                "extracted_metadata": {"espd_part": "4C.6", "qualifications": tech_ability.get("educational_and_professional_qualifications")}
+            })
+
+        return base_docs
+
     async def extract_bidding_deadlines(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         from datetime import UTC, datetime, timedelta
 
@@ -413,7 +471,7 @@ class MockAIClient(AIClient):
         return "\n".join(p for p in parts if p)
 
     @staticmethod
-    def _item(kind: str, req_type: str, title: str, source_link: str) -> dict[str, Any]:
+    def _item(kind: str, req_type: str, title: str, source_link: str, metadata_json: dict | None = None) -> dict[str, Any]:
         return {
             "criterion_kind": kind,
             "requirement_type": req_type,
@@ -421,6 +479,7 @@ class MockAIClient(AIClient):
             "source_link": source_link,
             "status": "open",
             "ai_verification": None,
+            "metadata_json": metadata_json,
         }
 
 
@@ -459,6 +518,31 @@ Struktur:
 {"deadlines": [{"kind": "submission|questions|registration|validity", "date": "ISO8601-Format", "source_link": "notice"}]}
 """.strip()
 
+ESPD_DOCUMENT_EXTRACTION_PROMPT = """
+Du bist ein Experte für öffentliche Ausschreibungen (Public Procurement) und den ESPD-Standard (European Single Procurement Document).
+Deine Aufgabe ist es, strukturierte Metadaten aus dem hochgeladenen Dokument zu extrahieren, das ein Bieter als Nachweis eingereicht hat.
+Die Anforderung (Requirement Target) gibt dir Kontext darüber, was das Dokument nachweisen soll (z.B. eine Referenz oder ein Profil).
+
+Extrahiere alle zutreffenden Felder aus ESPD Part 4C (Technical and professional ability):
+- 4C.1/4C.2 (References): project_title, amount, currency, start_date, end_date, recipient_name, is_public_buyer (boolean)
+- 4C.3 (Technicians): technician_name, technical_unit_description
+- 4C.4 (Supply Chain): supply_chain_system_description
+- 4C.5 (Quality Control): quality_control_institute_name
+- 4C.6 (Personnel/Profiles): person_name, proposed_role, educational_qualifications (list), professional_qualifications (list), years_of_experience (int)
+- 4C.7 (Environmental): environmental_management_measures
+- 4C.8 (Manpower): average_annual_manpower (int), managerial_staff_count (int)
+- 4C.9 (Tools/Equipment): equipment_description
+- 4C.10 (Subcontracting): subcontracting_proportion (string or float)
+
+Zusätzlich für 4A (Suitability) / 4B (Financial):
+- 4A: trade_register_number, legal_form
+- 4B: yearly_turnover, insurance_amount
+
+Antworte ausschließlich im JSON-Format. Extrahiere nur die Felder, die im Dokument eindeutig erwähnt werden.
+Struktur:
+{"extracted_metadata": {"espd_part": "4C.1", "project_title": "...", "amount": 50000, "currency": "EUR", "person_name": "...", "years_of_experience": 5}}
+""".strip()
+
 
 async def _configured_prompt(category: str) -> str:
     """Expert-edited template from the config API, or the hardcoded default."""
@@ -472,9 +556,11 @@ async def _configured_prompt(category: str) -> str:
             return await current_template(db, category)
     except Exception as e:
         logger.warning(f"Could not read configured prompt for {category}; using default: {e}")
-        return {"bidding_required_documents": REQUIRED_DOCUMENTS_PROMPT, "bidding_deadlines": DEADLINES_PROMPT}[
-            category
-        ]
+        return {
+            "bidding_required_documents": REQUIRED_DOCUMENTS_PROMPT,
+            "bidding_deadlines": DEADLINES_PROMPT,
+            "bidding_espd_extraction": ESPD_DOCUMENT_EXTRACTION_PROMPT
+        }.get(category, "")
 
 
 async def _sync_prompt(prompt_id: str, system_message: str):
@@ -518,6 +604,8 @@ class RealAIClient(AIClient):
         try:
             # Sync the expert-edited prompt (falls back to the default) to the AI connector.
             await _sync_prompt("bidding_required_documents", await _configured_prompt("bidding_required_documents"))
+            await _sync_prompt("bidding_deadlines", await _configured_prompt("bidding_deadlines"))
+            await _sync_prompt("bidding_espd_extraction", await _configured_prompt("bidding_espd_extraction"))
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(
                     f"{AI_URL}/api/inference",

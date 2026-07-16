@@ -1,6 +1,7 @@
 import pytest
+from core.database import Base, engine, init_db
 from sqlalchemy import text
-from core.database import engine, init_db, Base
+
 
 @pytest.mark.asyncio
 async def test_init_db_adds_selection_criteria_column():
@@ -11,7 +12,7 @@ async def test_init_db_adds_selection_criteria_column():
     async with engine.begin() as conn:
         # 1. Ensure table doesn't exist (clean slate)
         await conn.run_sync(Base.metadata.drop_all)
-        
+
         # 2. Create the bid table manually WITHOUT selection_criteria
         await conn.execute(text("""
             CREATE TABLE bid (
@@ -19,7 +20,7 @@ async def test_init_db_adds_selection_criteria_column():
                 title VARCHAR(255)
             )
         """))
-        
+
         # 3. Verify selection_criteria does NOT exist yet
         cols_res = await conn.execute(text("PRAGMA table_info(bid)"))
         existing_cols = {row[1] for row in cols_res.fetchall()}
@@ -33,7 +34,7 @@ async def test_init_db_adds_selection_criteria_column():
         cols_res = await conn.execute(text("PRAGMA table_info(bid)"))
         existing_cols = {row[1] for row in cols_res.fetchall()}
         assert "selection_criteria" in existing_cols
-        
+
         # Verify it can be written to
         await conn.execute(text("INSERT INTO bid (id, title, selection_criteria) VALUES ('123', 'Test', '{\"foo\": \"bar\"}')"))
         res = await conn.execute(text("SELECT selection_criteria FROM bid WHERE id = '123'"))

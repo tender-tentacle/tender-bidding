@@ -32,6 +32,20 @@ class BidRelayPayload(BaseModel):
     cpv_codes: list[str] = []
     selection_criteria: dict | None = None
     lots: list[LotSnapshot] = []
+
+    # eForms Business Terms
+    estimated_value_min: float | None = None
+    estimated_value_max: float | None = None
+    estimated_value: float | None = None
+    sme_suitable: bool | None = None
+    green_criteria: bool | None = None
+    social_criteria: bool | None = None
+    eu_funding: bool | None = None
+    variants_allowed: bool | None = None
+    options_allowed: bool | None = None
+    execution_period_days: int | None = None
+    dispatch_date: datetime | None = None
+
     # True = tender only marked "interesting" (provisional workspace, status
     # "exploring"); False = triaged as a real bid (or promotes an exploring one).
     provisional: bool = False
@@ -102,6 +116,7 @@ class ChecklistItemOut(BaseModel):
     source_link: str | None = None
     status: str
     ai_verification: dict | None = None
+    metadata_json: dict | None = None
     assignee_user_id: str | None = None
     lot_scope: str | None = None
     order: int
@@ -135,6 +150,7 @@ class RequiredDocumentOut(BaseModel):
     is_mandatory: bool = True
     status: str = "open"
     user_override: bool = False
+    extracted_metadata: dict | None = None
     uploaded_by: str | None = None
     uploaded_at: datetime | None = None
     uploaded_filename: str | None = None

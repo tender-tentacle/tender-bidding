@@ -175,7 +175,7 @@ async def test_required_document_upload_and_override(mocker):
         print("GET DETAIL STATUS:", get_res.status_code)
         print("GET DETAIL BODY:", get_res.json())
         detail = get_res.json()
-        
+
         # Verify required document list exists and default states
         assert len(detail["required_documents"]) > 0
         rd = detail["required_documents"][0]
