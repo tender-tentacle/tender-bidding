@@ -150,3 +150,20 @@ async def init_db() -> None:
     from services.portal_guide import seed_portal_guides
 
     await seed_portal_guides()
+
+import logging
+
+from sqlalchemy import event
+
+db_logger = logging.getLogger("schema-validator")
+
+@event.listens_for(engine.sync_engine, "handle_error")
+def receive_handle_error(exception_context):
+    if hasattr(exception_context, "original_exception") and hasattr(exception_context.original_exception, "args"):
+        error_str = str(exception_context.original_exception)
+        if "42S22" in error_str or "Invalid column name" in error_str or "no such column" in error_str:
+            db_logger.error(
+                f"🚨 DATABASE SCHEMA MISMATCH: A required column is missing in the database table! "
+                f"The SQLAlchemy models were updated, but the corresponding migration was either not run "
+                f"or failed to add the column. Details: {error_str}"
+            )
