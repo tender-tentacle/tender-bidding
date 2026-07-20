@@ -33,6 +33,19 @@ class BidRelayPayload(BaseModel):
     selection_criteria: dict | None = None
     lots: list[LotSnapshot] = []
 
+    # Classification Matches
+    matched_labels: list[dict | str] = []
+    matched_sectors: list[dict | str] = []
+    matched_services: list[dict | str] = []
+    matched_people: list[dict | str] = []
+    matched_campaigns: list[dict | str] = []
+    matched_trends: list[dict | str] = []
+    matched_practices: list[dict | str] = []
+    matched_clusters: list[dict | str] = []
+    matched_ressorts: list[dict | str] = []
+    matched_horizontals: list[dict | str] = []
+    classification_matches: list[dict] = []
+
     # eForms Business Terms
     estimated_value_min: float | None = None
     estimated_value_max: float | None = None
@@ -210,6 +223,20 @@ class BidDetail(BidSummary):
     selection_criteria: dict | None = None
     lots_in_scope: list | None = None
     cluster: str | None = None
+
+    # Classification Matches
+    matched_labels: list[dict | str] = []
+    matched_sectors: list[dict | str] = []
+    matched_services: list[dict | str] = []
+    matched_people: list[dict | str] = []
+    matched_campaigns: list[dict | str] = []
+    matched_trends: list[dict | str] = []
+    matched_practices: list[dict | str] = []
+    matched_clusters: list[dict | str] = []
+    matched_ressorts: list[dict | str] = []
+    matched_horizontals: list[dict | str] = []
+    classification_matches: list[dict] = []
+
     loss_reason: str | None = None
     loss_note: str | None = None
     collaborators: list[CollaboratorOut] = []

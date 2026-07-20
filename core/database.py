@@ -101,6 +101,15 @@ async def init_db() -> None:
             if "selection_criteria" not in existing_cols:
                 await conn.execute(text("ALTER TABLE bid ADD COLUMN selection_criteria JSON"))
                 logger.info("SQLite migration: Added column selection_criteria to bid")
+            for col in [
+                "matched_labels", "matched_sectors", "matched_services",
+                "matched_people", "matched_campaigns", "matched_trends",
+                "matched_practices", "matched_clusters", "matched_ressorts",
+                "matched_horizontals", "classification_matches"
+            ]:
+                if col not in existing_cols:
+                    await conn.execute(text(f"ALTER TABLE bid ADD COLUMN {col} JSON"))
+                    logger.info(f"SQLite migration: Added column {col} to bid")
 
             cols_res = await conn.execute(text("PRAGMA table_info(bid_checklist_item)"))
             existing_cols = {row[1] for row in cols_res.fetchall()}
@@ -136,6 +145,20 @@ async def init_db() -> None:
             END
             """
             await conn.execute(text(check_sql_bid))
+
+            for col in [
+                "matched_labels", "matched_sectors", "matched_services",
+                "matched_people", "matched_campaigns", "matched_trends",
+                "matched_practices", "matched_clusters", "matched_ressorts",
+                "matched_horizontals", "classification_matches"
+            ]:
+                check_sql_col = f"""
+                IF COL_LENGTH('bid', '{col}') IS NULL
+                BEGIN
+                    ALTER TABLE bid ADD {col} NVARCHAR(MAX) NULL
+                END
+                """
+                await conn.execute(text(check_sql_col))
 
             check_sql_checklist = """
             IF COL_LENGTH('bid_checklist_item', 'metadata_json') IS NULL

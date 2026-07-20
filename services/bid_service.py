@@ -55,6 +55,20 @@ async def create_bid_from_snapshot(db: AsyncSession, payload) -> tuple[Bid, bool
         lots_in_scope=[lot.get("lot_id") or lot.get("lot_number") for lot in snap.get("lots", [])],
         cpv_codes=snap.get("cpv_codes") or [],
         selection_criteria=snap.get("selection_criteria"),
+
+        # Classification Matches
+        matched_labels=snap.get("matched_labels") or [],
+        matched_sectors=snap.get("matched_sectors") or [],
+        matched_services=snap.get("matched_services") or [],
+        matched_people=snap.get("matched_people") or [],
+        matched_campaigns=snap.get("matched_campaigns") or [],
+        matched_trends=snap.get("matched_trends") or [],
+        matched_practices=snap.get("matched_practices") or [],
+        matched_clusters=snap.get("matched_clusters") or [],
+        matched_ressorts=snap.get("matched_ressorts") or [],
+        matched_horizontals=snap.get("matched_horizontals") or [],
+        classification_matches=snap.get("classification_matches") or [],
+
         status="exploring" if provisional else "draft",
     )
     bid.checklist_items = await build_checklist(snap)

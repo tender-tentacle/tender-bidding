@@ -74,7 +74,7 @@ function TenderTentacleLogo() {
   );
 }
 
-function Header() {
+function Header({ view, setView }: { view: "bids" | "library" | "expert"; setView: (v: "bids" | "library" | "expert") => void }) {
   const host = typeof window !== "undefined" ? window.location.hostname : "";
   const isLocal = host.includes("localhost") || host.includes("127.0.0.1");
   const isTest = host.includes("-test");
@@ -82,32 +82,39 @@ function Header() {
   const envColor = isLocal ? "#8b8b9e" : isTest ? "#f59e0b" : "#d5001c";
 
   return (
-    <header className="tt-header">
-      <div className="tt-header-left">
-        <div className="tt-brand">
-          <TenderTentacleLogo />
-          <span className="tt-brand-name">
-            TENDER TENTACLE <span className="thin">| Bidding</span>
-          </span>
+    <>
+      <header className="tt-header">
+        <div className="tt-header-left">
+          <div className="tt-brand">
+            <TenderTentacleLogo />
+            <span className="tt-brand-name">
+              TENDER TENTACLE <span className="thin">| Bidding</span>
+            </span>
+          </div>
+          <nav className="tt-nav">
+            {SERVICES.map((s) => (
+              <a key={s.name} href={s.path} className={s.active ? "active" : ""}>
+                {s.name}
+              </a>
+            ))}
+          </nav>
         </div>
-        <nav className="tt-nav">
-          {SERVICES.map((s) => (
-            <a key={s.name} href={s.path} className={s.active ? "active" : ""}>
-              {s.name}
-            </a>
-          ))}
-        </nav>
+        <div className="tt-header-right">
+          <div className="tt-env" style={{ color: envColor, borderColor: `${envColor}66` }}>
+            {envName} ENV
+          </div>
+          <div className="tt-online">
+            <span className="dot" />
+            <span>SYSTEM ONLINE</span>
+          </div>
+        </div>
+      </header>
+      <div className="tt-sub-header">
+        <button className={view === "bids" ? "active" : ""} onClick={() => setView("bids")}>Workspaces</button>
+        <button className={view === "library" ? "active" : ""} onClick={() => setView("library")}>Document Library</button>
+        <button className={view === "expert" ? "active" : ""} onClick={() => setView("expert")}>Expert Backend</button>
       </div>
-      <div className="tt-header-right">
-        <div className="tt-env" style={{ color: envColor, borderColor: `${envColor}66` }}>
-          {envName} ENV
-        </div>
-        <div className="tt-online">
-          <span className="dot" />
-          <span>SYSTEM ONLINE</span>
-        </div>
-      </div>
-    </header>
+    </>
   );
 }
 
@@ -122,7 +129,7 @@ function StatusTag({ status }: { status: string }) {
 export function App() {
   const [bids, setBids] = useState<BidSummary[]>([]);
   const [selected, setSelected] = useState<BidDetail | null>(null);
-  const [view, setView] = useState<"library" | "expert">("library");
+  const [view, setView] = useState<"bids" | "library" | "expert">("bids");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -158,49 +165,20 @@ export function App() {
 
   return (
     <div className="app">
-      <Header />
+      <Header view={view} setView={(v) => { setView(v); setSelected(null); }} />
       {error && (
         <div className="error-bar" data-testid="error">
           <PInlineNotification state="error" heading="Request failed" description={error} dismissButton={false} />
         </div>
       )}
-      <div className="content">
-        <aside className="bid-list">
-          <div className="bid-list-head">
-            <PHeading size="small" tag="h2" className="section-label">
-              Bids
-            </PHeading>
-            <div className="bid-list-actions">
-              <PButton
-                type="button"
-                variant="secondary"
-                icon="search"
-                compact={true}
-                hideLabel={true}
-                onClick={() => {
-                  setSelected(null);
-                  setView("library");
-                }}
-                data-testid="open-library"
-              >
-                Document Library
-              </PButton>
-              <PButton
-                type="button"
-                variant="secondary"
-                icon="wrench"
-                compact={true}
-                hideLabel={true}
-                onClick={() => {
-                  setSelected(null);
-                  setView("expert");
-                }}
-                data-testid="open-expert"
-              >
-                Expert Backend
-              </PButton>
+      <div className={`content ${view === "bids" ? "split-view" : "full-view"}`}>
+        {view === "bids" && (
+          <aside className="bid-list">
+            <div className="bid-list-head">
+              <PHeading size="small" tag="h2" className="section-label">
+                Bids
+              </PHeading>
             </div>
-          </div>
           <div data-testid="bid-list">
             {bids.map((b) => (
               <div
@@ -231,12 +209,13 @@ export function App() {
               </div>
             ))}
           </div>
-        </aside>
+          </aside>
+        )}
 
         <main className="workspace">
-          {!selected && view === "expert" && <ExpertBackend />}
-          {!selected && view === "library" && <Library />}
-          {selected && (
+          {view === "expert" && <ExpertBackend />}
+          {view === "library" && <Library />}
+          {view === "bids" && selected && (
             <Workspace
               bid={selected}
               onToggle={toggle}
@@ -246,6 +225,11 @@ export function App() {
                 api.listBids().then(setBids).catch(() => {});
               }}
             />
+          )}
+          {view === "bids" && !selected && (
+            <div className="workspace-empty" style={{ padding: "40px", textAlign: "center" }}>
+              <PText color="contrast-medium">Select a bid from the list to open its workspace.</PText>
+            </div>
           )}
         </main>
       </div>
@@ -324,15 +308,16 @@ function PromptsEditor() {
   }
 
   return (
-    <div className="expert-prompts" data-testid="expert-prompts">
-      <div className="kind-head">
+    <div className="card expert-prompts" data-testid="expert-prompts">
+      <div className="card-head">
+        <PIcon name="document" size="small" color="contrast-medium" />
         <PHeading size="small" tag="h3">
           AI Prompts
         </PHeading>
-        <PText size="xs" color="contrast-medium" tag="span">
-          Synced to the AI connector before each extraction
-        </PText>
       </div>
+      <PText size="xs" color="contrast-medium" style={{ marginBottom: "16px", display: "block" }}>
+        Synced to the AI connector before each extraction
+      </PText>
       {msg && (
         <div className="gate">
           <PInlineNotification
@@ -423,8 +408,8 @@ function ExpertBackend() {
   }
 
   return (
-    <div data-testid="expert-backend">
-      <div className="ws-header">
+    <div className="expert-container" data-testid="expert-backend">
+      <div className="ws-header" style={{ marginBottom: "24px" }}>
         <PHeading size="large" tag="h1">
           Expert Backend — Decision Matrix
         </PHeading>
@@ -449,99 +434,112 @@ function ExpertBackend() {
 
       {matrix && (
         <>
-          <div className="expert-settings">
-            <label className="expert-field">
-              <PText size="xs" color="contrast-medium">
-                Matrix name
-              </PText>
-              <input className="lib-input" value={name} onChange={(e) => setName(e.target.value)} />
-            </label>
-            <label className="expert-field">
-              <PText size="xs" color="contrast-medium">
-                Threshold (max {matrix.max_points} = 5 × Σ weights)
-              </PText>
+          <div className="card">
+            <div className="card-head">
+              <PIcon name="wrench" size="small" color="contrast-medium" />
+              <PHeading size="small" tag="h3">Matrix Settings</PHeading>
+            </div>
+            <div className="expert-settings">
+              <label className="expert-field">
+                <PText size="xs" color="contrast-medium">
+                  Matrix name
+                </PText>
+                <input className="lib-input" value={name} onChange={(e) => setName(e.target.value)} />
+              </label>
+              <label className="expert-field">
+                <PText size="xs" color="contrast-medium">
+                  Threshold (max {matrix.max_points} = 5 × Σ weights)
+                </PText>
+                <input
+                  className="lib-input"
+                  type="number"
+                  value={threshold}
+                  onChange={(e) => setThreshold(e.target.value)}
+                  data-testid="expert-threshold"
+                />
+              </label>
+              <PTag variant="secondary" compact={true}>
+                v{matrix.version}
+              </PTag>
+              <PButton
+                type="button"
+                variant="primary"
+                compact={true}
+                onClick={() =>
+                  act(
+                    () => api.updateMatrix({ name, threshold: Number(threshold), change_summary: "Edited in expert backend" }),
+                    "Settings saved.",
+                  )
+                }
+                data-testid="expert-save"
+              >
+                Save settings
+              </PButton>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-head">
+              <PIcon name="stack" size="small" color="contrast-medium" />
+              <PHeading size="small" tag="h3">Categories</PHeading>
+            </div>
+            <div className="matrix-rows expert-rows" data-testid="expert-categories">
+              {matrix.categories.map((c) => (
+                <ExpertCategoryRow key={c.id} category={c} onAct={act} />
+              ))}
+            </div>
+
+            <div className="expert-add">
               <input
                 className="lib-input"
-                type="number"
-                value={threshold}
-                onChange={(e) => setThreshold(e.target.value)}
-                data-testid="expert-threshold"
+                placeholder="New category headline"
+                value={draft.headline}
+                onChange={(e) => setDraft({ ...draft, headline: e.target.value })}
+                data-testid="expert-new-headline"
               />
-            </label>
-            <PTag variant="secondary" compact={true}>
-              v{matrix.version}
-            </PTag>
-            <PButton
-              type="button"
-              variant="primary"
-              compact={true}
-              onClick={() =>
-                act(
-                  () => api.updateMatrix({ name, threshold: Number(threshold), change_summary: "Edited in expert backend" }),
-                  "Settings saved.",
-                )
-              }
-              data-testid="expert-save"
-            >
-              Save settings
-            </PButton>
+              <input
+                className="lib-input lib-q"
+                placeholder="Explanation — the expert's intent, in prose (the AI scores against this)"
+                value={draft.explanation}
+                onChange={(e) => setDraft({ ...draft, explanation: e.target.value })}
+              />
+              <select
+                className="lib-input"
+                value={draft.weight}
+                onChange={(e) => setDraft({ ...draft, weight: e.target.value })}
+              >
+                {WEIGHT_CHOICES.map((w) => (
+                  <option key={w} value={w}>
+                    w {w}
+                  </option>
+                ))}
+              </select>
+              <PButton
+                type="button"
+                variant="secondary"
+                icon="add"
+                compact={true}
+                onClick={() =>
+                  act(
+                    () =>
+                      api.addMatrixCategory({
+                        headline: draft.headline,
+                        explanation: draft.explanation || undefined,
+                        weight: Number(draft.weight),
+                      }),
+                    "Category added.",
+                  ).then(() => setDraft({ headline: "", explanation: "", weight: "3" }))
+                }
+                data-testid="expert-add"
+              >
+                Add category
+              </PButton>
+            </div>
           </div>
 
-          <div className="matrix-rows expert-rows" data-testid="expert-categories">
-            {matrix.categories.map((c) => (
-              <ExpertCategoryRow key={c.id} category={c} onAct={act} />
-            ))}
-          </div>
-
-          <div className="expert-add">
-            <input
-              className="lib-input"
-              placeholder="New category headline"
-              value={draft.headline}
-              onChange={(e) => setDraft({ ...draft, headline: e.target.value })}
-              data-testid="expert-new-headline"
-            />
-            <input
-              className="lib-input lib-q"
-              placeholder="Explanation — the expert's intent, in prose (the AI scores against this)"
-              value={draft.explanation}
-              onChange={(e) => setDraft({ ...draft, explanation: e.target.value })}
-            />
-            <select
-              className="lib-input"
-              value={draft.weight}
-              onChange={(e) => setDraft({ ...draft, weight: e.target.value })}
-            >
-              {WEIGHT_CHOICES.map((w) => (
-                <option key={w} value={w}>
-                  w {w}
-                </option>
-              ))}
-            </select>
-            <PButton
-              type="button"
-              variant="secondary"
-              icon="add"
-              compact={true}
-              onClick={() =>
-                act(
-                  () =>
-                    api.addMatrixCategory({
-                      headline: draft.headline,
-                      explanation: draft.explanation || undefined,
-                      weight: Number(draft.weight),
-                    }),
-                  "Category added.",
-                ).then(() => setDraft({ headline: "", explanation: "", weight: "3" }))
-              }
-              data-testid="expert-add"
-            >
-              Add category
-            </PButton>
-          </div>
-
-          <div className="expert-history" data-testid="expert-history">
-            <div className="kind-head">
+          <div className="card expert-history" data-testid="expert-history">
+            <div className="card-head">
+              <PIcon name="calendar" size="small" color="contrast-medium" />
               <PHeading size="small" tag="h3">
                 History
               </PHeading>

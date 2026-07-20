@@ -55,6 +55,19 @@ class Bid(Base):
     cpv_codes: Mapped[list | None] = mapped_column(JSON, default=list)  # from the tender snapshot
     selection_criteria: Mapped[dict | None] = mapped_column(JSON)
 
+    # Classification Matches from enriching
+    matched_labels: Mapped[list | None] = mapped_column(JSON, default=list)
+    matched_sectors: Mapped[list | None] = mapped_column(JSON, default=list)
+    matched_services: Mapped[list | None] = mapped_column(JSON, default=list)
+    matched_people: Mapped[list | None] = mapped_column(JSON, default=list)
+    matched_campaigns: Mapped[list | None] = mapped_column(JSON, default=list)
+    matched_trends: Mapped[list | None] = mapped_column(JSON, default=list)
+    matched_practices: Mapped[list | None] = mapped_column(JSON, default=list)
+    matched_clusters: Mapped[list | None] = mapped_column(JSON, default=list)
+    matched_ressorts: Mapped[list | None] = mapped_column(JSON, default=list)
+    matched_horizontals: Mapped[list | None] = mapped_column(JSON, default=list)
+    classification_matches: Mapped[list | None] = mapped_column(JSON, default=list)
+
     driver_user_id: Mapped[str | None] = mapped_column(String(255), index=True)
     title: Mapped[str] = mapped_column(String(1000))
     customer: Mapped[str | None] = mapped_column(String(1000))

@@ -1,10 +1,13 @@
+from unittest.mock import patch
+
 import pytest
 from core.database import Base, engine, init_db
 from sqlalchemy import text
 
 
 @pytest.mark.asyncio
-async def test_init_db_adds_selection_criteria_column():
+@patch('core.schema_validator.verify_schema_integrity')
+async def test_init_db_adds_selection_criteria_column(mock_verify):
     """
     Test that if the bid table already exists but lacks the selection_criteria column,
     init_db() successfully adds it via the migration logic.
