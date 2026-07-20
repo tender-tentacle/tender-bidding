@@ -70,8 +70,6 @@ async def init_db() -> None:
     import models.bid  # noqa: F401 — register mappers with Base.metadata
 
     async with engine.begin() as conn:
-        from core.schema_validator import verify_schema_integrity
-        await conn.run_sync(verify_schema_integrity, Base)
         await conn.run_sync(Base.metadata.create_all)
 
         # Safe migration patch: check and add new columns to bid_required_document
@@ -167,6 +165,9 @@ async def init_db() -> None:
             END
             """
             await conn.execute(text(check_sql_checklist))
+
+        from core.schema_validator import verify_schema_integrity
+        await conn.run_sync(verify_schema_integrity, Base)
 
     logger.info(f"🔌 Bidding DB ready at {_url.split('@')[-1]}")
 

@@ -4,7 +4,17 @@ import { defineConfig } from "vite";
 const crossoriginPlugin = () => ({
   name: 'crossorigin-use-credentials',
   transformIndexHtml(html: string) {
-    return html.replace(/crossorigin/g, 'crossorigin="use-credentials"');
+    return html.replace(/crossorigin/g, (match, offset) => {
+      const tagStart = html.lastIndexOf('<', offset);
+      const tagEnd = html.indexOf('>', offset);
+      if (tagStart !== -1 && tagEnd !== -1) {
+        const tagContent = html.substring(tagStart, tagEnd);
+        if (tagContent.includes('porsche.com') || tagContent.includes('fonts.gstatic.com')) {
+          return 'crossorigin="anonymous"';
+        }
+      }
+      return 'crossorigin="use-credentials"';
+    });
   }
 });
 
