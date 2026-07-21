@@ -31,15 +31,15 @@ e-submission.
 - **Manual tender-doc upload + regenerate** (additive checklist diff) for when the
   crawler could not fetch the documents.
 
-## Runs on test data (mocked)
-`BIDDING_MOCK=1` (default) uses a canned AI backend + local-temp blob + SQLite, so
-the service boots and the UI renders with no live enriching/ai-connector/Azure.
+## Runs in real mode by default (no mocking)
+`BIDDING_MOCK=0` (default) connects to the real AI connector and other services.
+To run with mocked/offline services (canned AI + local-temp blob + SQLite), set `BIDDING_MOCK=1`.
 
 ```bash
 # Backend
 python3.12 -m venv ../.venv && ../.venv/bin/pip install -r requirements.txt
-BIDDING_MOCK=1 PYTHONPATH=. ../.venv/bin/python seed.py   # sample bids
-BIDDING_MOCK=1 PYTHONPATH=. ../.venv/bin/python main.py   # :8014
+BIDDING_MOCK=1 PYTHONPATH=. ../.venv/bin/python seed.py   # sample bids with mock mode
+BIDDING_MOCK=0 PYTHONPATH=. ../.venv/bin/python main.py   # runs real mode on :8014
 
 # Tests (hermetic, in-process ASGI + temp SQLite)
 PYTHONPATH=. pytest            # unit + integration + pact

@@ -15,8 +15,8 @@ def _truthy(val: str | None, default: bool) -> bool:
     return val.strip().lower() in ("1", "true", "yes", "on")
 
 
-# Mock mode is ON by default — v1 ships as a self-contained, demoable service.
-MOCK_MODE: bool = _truthy(os.getenv("BIDDING_MOCK"), default=True)
+# Mock mode is OFF by default.
+MOCK_MODE: bool = _truthy(os.getenv("BIDDING_MOCK"), default=False)
 
 # Own, ISOLATED database (separate Azure SQL server in prod). Local dev/tests
 # fall back to SQLite so nothing external is required.
