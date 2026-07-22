@@ -1,3 +1,12 @@
+# --- UI Builder Stage ---
+FROM node:20-slim AS ui-builder
+WORKDIR /app/ui
+COPY ui/package*.json ./
+RUN npm install --legacy-peer-deps
+COPY ui/ ./
+RUN npm run build -- --base=/ms/bidding/
+
+# --- Python Backend Stage ---
 FROM python:3.13-slim-bookworm
 
 WORKDIR /app
@@ -15,6 +24,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
+COPY --from=ui-builder /app/ui/dist ./ui/dist
 
 ENV PYTHONPATH="/app"
 
