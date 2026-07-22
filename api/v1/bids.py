@@ -100,6 +100,10 @@ async def get_bid_by_source(source_ref: str, db: Annotated[AsyncSession, Depends
                     ext_id = resp.json().get("external_id")
                     if ext_id:
                         bid = await get_by_source_ref(db, ext_id)
+                else:
+                    g_resp = await client.get(f"{ENRICHING_URL}/api/v1/groups/{source_ref}")
+                    if g_resp.status_code == 200:
+                        bid = await get_by_source_ref(db, source_ref)
         except Exception:
             # Ignore errors and proceed without a bid (fallback best-effort behavior)
             pass
@@ -115,7 +119,9 @@ async def get_bid(bid_id: str, db: Annotated[AsyncSession, Depends(get_db)]):
 
 
 @router.post("/{bid_id}/status", response_model=BidDetail)
-async def update_status(bid_id: str, body: StatusUpdate, request: Request, db: Annotated[AsyncSession, Depends(get_db)]):
+async def update_status(
+    bid_id: str, body: StatusUpdate, request: Request, db: Annotated[AsyncSession, Depends(get_db)]
+):
     bid = await _load(db, bid_id)
     if body.status not in BID_STATUSES:
         raise HTTPException(status_code=400, detail=f"Invalid status. Allowed: {BID_STATUSES}")
@@ -141,7 +147,9 @@ async def update_status(bid_id: str, body: StatusUpdate, request: Request, db: A
 
 
 @router.post("/{bid_id}/collaborators", response_model=CollaboratorOut, status_code=201)
-async def add_collaborator(bid_id: str, body: CollaboratorIn, request: Request, db: Annotated[AsyncSession, Depends(get_db)]):
+async def add_collaborator(
+    bid_id: str, body: CollaboratorIn, request: Request, db: Annotated[AsyncSession, Depends(get_db)]
+):
     bid = await _load(db, bid_id)
     collab = BidCollaborator(bid_id=bid.id, user_id=body.user_id, role=body.role)
     db.add(collab)
@@ -240,7 +248,9 @@ async def rematch_documents(bid_id: str, request: Request, db: Annotated[AsyncSe
 
 
 @router.post("/{bid_id}/match/accept")
-async def accept_match(bid_id: str, body: MatchDecision, request: Request, db: Annotated[AsyncSession, Depends(get_db)]):
+async def accept_match(
+    bid_id: str, body: MatchDecision, request: Request, db: Annotated[AsyncSession, Depends(get_db)]
+):
     """Accept a proposed corpus match: link the evidence with full provenance.
 
     The item is NOT auto-completed — a human still adapts the document; the
@@ -285,7 +295,9 @@ async def accept_match(bid_id: str, body: MatchDecision, request: Request, db: A
 
 
 @router.post("/{bid_id}/match/reject")
-async def reject_match(bid_id: str, body: MatchDecision, request: Request, db: Annotated[AsyncSession, Depends(get_db)]):
+async def reject_match(
+    bid_id: str, body: MatchDecision, request: Request, db: Annotated[AsyncSession, Depends(get_db)]
+):
     """Reject a proposed match. The item is untouched; the why is kept as a learning signal."""
     bid = await _load(db, bid_id)
     item = next((i for i in bid.checklist_items if i.id == body.checklist_item_id), None)
@@ -311,6 +323,7 @@ async def _fetch_tender_data(source_id: str, source_kind: str) -> dict:
     """Helper to fetch tender/group details from the enriching service."""
     import httpx
     from core.config import ENRICHING_URL
+
     tender_data = {}
 
     try:
@@ -358,8 +371,12 @@ def _resolve_attachment_links(source_doc_name: str | None, attachments: list) ->
             att_title = (att.get("title") or "").lower()
             att_url = att.get("url") or ""
             att_filename = att_url.split("/")[-1].lower()
-            if (name_lower in att_title or att_title in name_lower or
-                    name_lower in att_filename or att_filename in name_lower):
+            if (
+                name_lower in att_title
+                or att_title in name_lower
+                or name_lower in att_filename
+                or att_filename in name_lower
+            ):
                 link_original_doc = att.get("url")
                 link_parsed_doc = att.get("url")
                 break
@@ -375,6 +392,7 @@ def _resolve_attachment_links(source_doc_name: str | None, attachments: list) ->
 def _create_required_documents(db: AsyncSession, docs_payload: list, attachments: list, bid_id: str):
     """Helper to create RequiredDocument database models."""
     import hashlib
+
     for doc in docs_payload:
         source_doc_name = doc.get("source_doc_name")
         link_original, link_parsed = _resolve_attachment_links(source_doc_name, attachments)
@@ -404,6 +422,7 @@ def _create_required_documents(db: AsyncSession, docs_payload: list, attachments
 def _create_key_dates(db: AsyncSession, deadlines_payload: list, bid_id: str):
     """Helper to parse dates and build KeyDate database models."""
     from datetime import datetime
+
     for dl in deadlines_payload:
         dt_val = dl.get("date")
         if isinstance(dt_val, str):

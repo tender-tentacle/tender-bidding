@@ -224,19 +224,40 @@ class MockAIClient(AIClient):
         # 4C.1/4C.2 References
         if tech_ability.get("references"):
             items.append(
-                self._item(SUITABILITY, "reference", "References / Past Performance (ESPD 4C.1)", cited, metadata_json={"espd_part": "4C.1", "references": tech_ability.get("references")})
+                self._item(
+                    SUITABILITY,
+                    "reference",
+                    "References / Past Performance (ESPD 4C.1)",
+                    cited,
+                    metadata_json={"espd_part": "4C.1", "references": tech_ability.get("references")},
+                )
             )
 
         # 4C.6 Profiles/CVs
         if tech_ability.get("educational_and_professional_qualifications"):
             items.append(
-                self._item(SUITABILITY, "profile", "Personnel CVs / Qualifications (ESPD 4C.6)", cited, metadata_json={"espd_part": "4C.6", "qualifications": tech_ability.get("educational_and_professional_qualifications")})
+                self._item(
+                    SUITABILITY,
+                    "profile",
+                    "Personnel CVs / Qualifications (ESPD 4C.6)",
+                    cited,
+                    metadata_json={
+                        "espd_part": "4C.6",
+                        "qualifications": tech_ability.get("educational_and_professional_qualifications"),
+                    },
+                )
             )
 
         # 4C.8 Manpower
         if tech_ability.get("average_annual_manpower"):
             items.append(
-                self._item(SUITABILITY, "capacity", "Average Annual Manpower (ESPD 4C.8)", cited, metadata_json={"espd_part": "4C.8", "manpower": tech_ability.get("average_annual_manpower")})
+                self._item(
+                    SUITABILITY,
+                    "capacity",
+                    "Average Annual Manpower (ESPD 4C.8)",
+                    cited,
+                    metadata_json={"espd_part": "4C.8", "manpower": tech_ability.get("average_annual_manpower")},
+                )
             )
 
         for i, it in enumerate(items):
@@ -258,7 +279,7 @@ class MockAIClient(AIClient):
             "extracted_metadata": {
                 "espd_part": "4C.1",
                 "project_title": "Mock Project",
-                "person_name": "Max Mustermann"
+                "person_name": "Max Mustermann",
             }
         }
 
@@ -272,7 +293,7 @@ class MockAIClient(AIClient):
                 "short_summary": "Handelsregisterauszug nicht älter als 3 Monate.",
                 "quote_original": "Zum Nachweis der Eignung ist ein aktueller Auszug aus dem Handelsregister (nicht älter als drei Monate ab dem Tag der Angebotsabgabe) vorzulegen.",
                 "source_doc_name": "Ausschreibungsunterlagen.pdf",
-                "is_mandatory": True
+                "is_mandatory": True,
             },
             {
                 "id": "doc_referenz_1",
@@ -282,7 +303,7 @@ class MockAIClient(AIClient):
                 "short_summary": "Vergleichbare Referenz über Netzwerktechnik der letzten 3 Jahre.",
                 "quote_original": "Der Bieter muss mindestens drei Referenzen über vergleichbare Leistungen aus den letzten 3 Jahren vorweisen.",
                 "source_doc_name": "Vergabeunterlagen.pdf",
-                "is_mandatory": False
+                "is_mandatory": False,
             },
             {
                 "id": "doc_referenz_2",
@@ -292,7 +313,7 @@ class MockAIClient(AIClient):
                 "short_summary": "Referenz über vergleichbare Komplexität der letzten 3 Jahre.",
                 "quote_original": "Der Bieter muss mindestens drei Referenzen über vergleichbare Leistungen aus den letzten 3 Jahren vorweisen.",
                 "source_doc_name": "Vergabeunterlagen.pdf",
-                "is_mandatory": False
+                "is_mandatory": False,
             },
             {
                 "id": "doc_cv_project_lead",
@@ -302,7 +323,7 @@ class MockAIClient(AIClient):
                 "short_summary": "Lebenslauf Projektleiter",
                 "quote_original": "Projektteam CVs: Lebensläufe der vorgesehenen Schlüsselpersonen mit Nachweis der geforderten Zertifizierungen.",
                 "source_doc_name": "Projektbeschreibung.pdf",
-                "is_mandatory": True
+                "is_mandatory": True,
             },
             {
                 "id": "doc_cv_senior_dev_1",
@@ -312,7 +333,7 @@ class MockAIClient(AIClient):
                 "short_summary": "Lebenslauf des ersten Senior-Entwicklers mit Zertifikatsnachweis.",
                 "quote_original": "Projektteam CVs: Lebensläufe der vorgesehenen Schlüsselpersonen mit Nachweis der geforderten Zertifizierungen.",
                 "source_doc_name": "Projektbeschreibung.pdf",
-                "is_mandatory": True
+                "is_mandatory": True,
             },
             {
                 "id": "doc_cv_senior_dev_2",
@@ -322,7 +343,7 @@ class MockAIClient(AIClient):
                 "short_summary": "Lebenslauf des zweiten Senior-Entwicklers mit Zertifikatsnachweis.",
                 "quote_original": "Projektteam CVs: Lebensläufe der vorgesehenen Schlüsselpersonen mit Nachweis der geforderten Zertifizierungen.",
                 "source_doc_name": "Projektbeschreibung.pdf",
-                "is_mandatory": True
+                "is_mandatory": True,
             },
             {
                 "id": "doc_haftpflicht",
@@ -332,7 +353,7 @@ class MockAIClient(AIClient):
                 "short_summary": "Nachweis einer ausreichenden Betriebshafpflichtversicherung.",
                 "quote_original": "Haftpflichtversicherung: Nachweis einer bestehenden Betriebshaftpflichtversicherung mit ausreichender Deckung.",
                 "source_doc_name": "Ausschreibungsunterlagen.pdf",
-                "is_mandatory": True
+                "is_mandatory": True,
             },
             {
                 "id": "doc_eigenerklaerung_ausschluss",
@@ -342,7 +363,7 @@ class MockAIClient(AIClient):
                 "short_summary": "Eigenerklärung zu Nichtvorliegen von Ausschlussgründen.",
                 "quote_original": "Eigenerklärung, dass keine Ausschlussgründe nach §§ 123, 124 GWB vorliegen.",
                 "source_doc_name": "Eigenerklaerungen.pdf",
-                "is_mandatory": True
+                "is_mandatory": True,
             },
             {
                 "id": "doc_eigenerklaerung_mindestlohn",
@@ -352,7 +373,7 @@ class MockAIClient(AIClient):
                 "short_summary": "MiLoG-Einhaltungserklärung.",
                 "quote_original": "Eigenerklärung zur Einhaltung des Mindestlohngesetzes (MiLoG) sowie landesspezifischer Tariftreuevorgaben.",
                 "source_doc_name": "Eigenerklaerungen.pdf",
-                "is_mandatory": True
+                "is_mandatory": True,
             },
             {
                 "id": "doc_preisblatt",
@@ -362,7 +383,7 @@ class MockAIClient(AIClient):
                 "short_summary": "Ausgefülltes Preisblatt (PDF / GAEB).",
                 "quote_original": "Das Preisblatt ist vollständig auszufüllen und als PDF sowie im GAEB-Format hochzuladen.",
                 "source_doc_name": "Preisblatt.pdf",
-                "is_mandatory": True
+                "is_mandatory": True,
             },
             {
                 "id": "doc_leistungskonzept",
@@ -372,7 +393,7 @@ class MockAIClient(AIClient):
                 "short_summary": "Konzeptbeschreibung zur Umsetzung des LV.",
                 "quote_original": "Der Bieter hat ein detailliertes Leistungskonzept einzureichen, das auf die Anforderungen der Leistungsbeschreibung eingeht.",
                 "source_doc_name": "Vergabeunterlagen.pdf",
-                "is_mandatory": True
+                "is_mandatory": True,
             },
         ]
 
@@ -381,30 +402,37 @@ class MockAIClient(AIClient):
         tech_ability = sel_criteria.get("technical_ability") or {}
 
         if tech_ability.get("references"):
-            base_docs.append({
-                "id": "doc_espd_references",
-                "document_name": "ESPD 4C.1 - References",
-                "description": "Nachweis von Referenzen entsprechend ESPD 4C.",
-                "category": "suitability",
-                "short_summary": "Referenzen gemäß ESPD",
-                "quote_original": "Gemäß ESPD Anforderung 4C.1",
-                "source_doc_name": "ESPD.xml",
-                "is_mandatory": True,
-                "extracted_metadata": {"espd_part": "4C.1", "references": tech_ability.get("references")}
-            })
+            base_docs.append(
+                {
+                    "id": "doc_espd_references",
+                    "document_name": "ESPD 4C.1 - References",
+                    "description": "Nachweis von Referenzen entsprechend ESPD 4C.",
+                    "category": "suitability",
+                    "short_summary": "Referenzen gemäß ESPD",
+                    "quote_original": "Gemäß ESPD Anforderung 4C.1",
+                    "source_doc_name": "ESPD.xml",
+                    "is_mandatory": True,
+                    "extracted_metadata": {"espd_part": "4C.1", "references": tech_ability.get("references")},
+                }
+            )
 
         if tech_ability.get("educational_and_professional_qualifications"):
-            base_docs.append({
-                "id": "doc_espd_profiles",
-                "document_name": "ESPD 4C.6 - Qualifications",
-                "description": "Nachweis von Qualifikationen entsprechend ESPD 4C.",
-                "category": "suitability",
-                "short_summary": "Qualifikationen gemäß ESPD",
-                "quote_original": "Gemäß ESPD Anforderung 4C.6",
-                "source_doc_name": "ESPD.xml",
-                "is_mandatory": True,
-                "extracted_metadata": {"espd_part": "4C.6", "qualifications": tech_ability.get("educational_and_professional_qualifications")}
-            })
+            base_docs.append(
+                {
+                    "id": "doc_espd_profiles",
+                    "document_name": "ESPD 4C.6 - Qualifications",
+                    "description": "Nachweis von Qualifikationen entsprechend ESPD 4C.",
+                    "category": "suitability",
+                    "short_summary": "Qualifikationen gemäß ESPD",
+                    "quote_original": "Gemäß ESPD Anforderung 4C.6",
+                    "source_doc_name": "ESPD.xml",
+                    "is_mandatory": True,
+                    "extracted_metadata": {
+                        "espd_part": "4C.6",
+                        "qualifications": tech_ability.get("educational_and_professional_qualifications"),
+                    },
+                }
+            )
 
         return base_docs
 
@@ -471,7 +499,9 @@ class MockAIClient(AIClient):
         return "\n".join(p for p in parts if p)
 
     @staticmethod
-    def _item(kind: str, req_type: str, title: str, source_link: str, metadata_json: dict | None = None) -> dict[str, Any]:
+    def _item(
+        kind: str, req_type: str, title: str, source_link: str, metadata_json: dict | None = None
+    ) -> dict[str, Any]:
         return {
             "criterion_kind": kind,
             "requirement_type": req_type,
@@ -559,7 +589,7 @@ async def _configured_prompt(category: str) -> str:
         return {
             "bidding_required_documents": REQUIRED_DOCUMENTS_PROMPT,
             "bidding_deadlines": DEADLINES_PROMPT,
-            "bidding_espd_extraction": ESPD_DOCUMENT_EXTRACTION_PROMPT
+            "bidding_espd_extraction": ESPD_DOCUMENT_EXTRACTION_PROMPT,
         }.get(category, "")
 
 
@@ -622,7 +652,7 @@ class RealAIClient(AIClient):
                                     "short_summary": "str",
                                     "quote_original": "str",
                                     "source_doc_name": "str",
-                                    "is_mandatory": "bool"
+                                    "is_mandatory": "bool",
                                 }
                             ]
                         },
@@ -631,8 +661,8 @@ class RealAIClient(AIClient):
                 if resp.status_code == 200:
                     data = resp.json()
                     if data.get("status") == "success":
-                        docs = data.get("data", {}).get("documents", [])
-                        if docs:
+                        docs = data.get("data", {}).get("documents")
+                        if docs is not None:
                             return docs
                 raise RuntimeError(f"AI service returned status code {resp.status_code}: {resp.text}")
         except Exception as e:
@@ -657,8 +687,8 @@ class RealAIClient(AIClient):
                 if resp.status_code == 200:
                     data = resp.json()
                     if data.get("status") == "success":
-                        deadlines = data.get("data", {}).get("deadlines", [])
-                        if deadlines:
+                        deadlines = data.get("data", {}).get("deadlines")
+                        if deadlines is not None:
                             return deadlines
                 raise RuntimeError(f"AI service returned status code {resp.status_code}: {resp.text}")
         except Exception as e:

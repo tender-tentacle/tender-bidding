@@ -11,11 +11,13 @@ def setup_real_ai(monkeypatch):
     monkeypatch.setattr(core.ai_client, "MOCK_MODE", False)
     monkeypatch.setattr(core.ai_client, "AI_URL", "http://localhost:8004")
 
+
 def test_config_overridden():
     assert core.config.MOCK_MODE is False
     assert core.config.AI_URL == "http://localhost:8004"
     assert core.ai_client.MOCK_MODE is False
     assert core.ai_client.AI_URL == "http://localhost:8004"
+
 
 @pytest.mark.asyncio
 async def test_real_ai_extract_group():
@@ -54,6 +56,7 @@ Erforderliche Unterlagen:
     assert any("referenz" in n for n in names)
     assert any("cv" in n or "lebensl" in n or "projekt" in n for n in names)
 
+
 @pytest.mark.asyncio
 async def test_real_ai_extract_tender():
     client = core.ai_client.RealAIClient()
@@ -79,6 +82,7 @@ Anforderungen an den Bieter:
     print("Tender extracted docs:", docs)
     assert any("preisblatt" in n or "preis" in n for n in names)
     assert any("konzept" in n or "leistung" in n for n in names)
+
 
 @pytest.mark.asyncio
 async def test_real_ai_extract_lot():

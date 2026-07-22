@@ -28,7 +28,7 @@ async def build_checklist(snapshot: dict[str, Any]) -> list[ChecklistItem]:
             source_link=i.get("source_link"),
             status=i.get("status", "open"),
             order=i.get("order", 0),
-            metadata_json=i.get("metadata_json")
+            metadata_json=i.get("metadata_json"),
         )
         for i in raw
     ]
@@ -75,7 +75,7 @@ async def regenerate_checklist(bid: Bid, snapshot: dict[str, Any]) -> dict[str, 
                 source_link=item.get("source_link"),
                 status="open",
                 order=next_order,
-                metadata_json=item.get("metadata_json")
+                metadata_json=item.get("metadata_json"),
             )
         )
         next_order += 1

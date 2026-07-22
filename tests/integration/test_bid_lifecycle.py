@@ -144,6 +144,7 @@ async def test_portal_guide_and_deadlines_endpoints():
 async def test_required_document_upload_and_override(mocker):
     # Mock enriching HTTP call
     import httpx
+
     mock_response = mocker.MagicMock(spec=httpx.Response)
     mock_response.status_code = 200
     mock_response.json = lambda: {
@@ -188,7 +189,7 @@ async def test_required_document_upload_and_override(mocker):
         r = await client.post(
             f"/bids/{bid['id']}/required-documents/{rd['id']}/upload",
             files=files,
-            headers={"X-User-ID": "test-uploader@email.com", "X-User-Name": "Uploader Name"}
+            headers={"X-User-ID": "test-uploader@email.com", "X-User-Name": "Uploader Name"},
         )
         assert r.status_code == 201
         res = r.json()
@@ -202,10 +203,8 @@ async def test_required_document_upload_and_override(mocker):
 
         # 2. Human override status to open
         over_resp = await client.post(
-            f"/bids/{bid['id']}/required-documents/{rd['id']}/override",
-            json={"status": "open"}
+            f"/bids/{bid['id']}/required-documents/{rd['id']}/override", json={"status": "open"}
         )
         assert over_resp.status_code == 200
         assert over_resp.json()["status"] == "open"
         assert over_resp.json()["user_override"] is True
-

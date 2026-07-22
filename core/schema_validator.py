@@ -4,6 +4,7 @@ from sqlalchemy import inspect
 
 logger = logging.getLogger("schema-validator")
 
+
 def verify_schema_integrity(conn, base_class):
     """
     Inspects the active database schema and compares it with SQLAlchemy metadata models.
@@ -23,7 +24,7 @@ def verify_schema_integrity(conn, base_class):
             continue
 
         # Get active columns from the database table
-        db_cols = {col['name']: col for col in inspector.get_columns(table_name)}
+        db_cols = {col["name"]: col for col in inspector.get_columns(table_name)}
 
         for column in table.columns:
             if column.name not in db_cols:
@@ -38,7 +39,7 @@ def verify_schema_integrity(conn, base_class):
             # Check critical nullability drift:
             # If Database is NOT NULL (nullable=False) with no default,
             # but Python model thinks it's nullable (nullable=True), inserts will fail.
-            if column.nullable and not db_col['nullable'] and db_col['default'] is None:
+            if column.nullable and not db_col["nullable"] and db_col["default"] is None:
                 errors.append(
                     f"Column '{column.name}' of Table '{table_name}' is marked nullable in Python, but is NOT NULL without default in the Database."
                 )
@@ -48,7 +49,7 @@ def verify_schema_integrity(conn, base_class):
             if db_col_name not in [c.name for c in table.columns]:
                 # The Database requires this column, but the Python model doesn't define it.
                 # If it's NOT NULL and has no default, inserts will fail with Error 515.
-                if not db_col['nullable'] and db_col['default'] is None:
+                if not db_col["nullable"] and db_col["default"] is None:
                     errors.append(
                         f"Database requires column '{db_col_name}' in Table '{table_name}' (NOT NULL, no default), but Python model does not define it. Inserts will crash."
                     )

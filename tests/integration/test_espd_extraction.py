@@ -9,10 +9,12 @@ async def _create_bid(client) -> dict:
     assert r.status_code == 200, r.text
     return r.json()
 
+
 @pytest.mark.asyncio
 async def test_espd_extraction_on_upload(mocker):
     # Mock enriching HTTP call
     import httpx
+
     mock_response = mocker.MagicMock(spec=httpx.Response)
     mock_response.status_code = 200
     mock_response.json = lambda: {
@@ -52,7 +54,7 @@ async def test_espd_extraction_on_upload(mocker):
         r = await client.post(
             f"/bids/{bid['id']}/required-documents/{rd['id']}/upload",
             files=files,
-            headers={"X-User-ID": "test@user.com"}
+            headers={"X-User-ID": "test@user.com"},
         )
         assert r.status_code == 201
 

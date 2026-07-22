@@ -13,8 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/bids", tags=["required-documents"])
 
+
 class RequiredDocOverrideIn(BaseModel):
     status: str
+
 
 def _to_markdown(filename: str, data: bytes) -> str:
     lower = filename.lower()
@@ -25,19 +27,20 @@ def _to_markdown(filename: str, data: bytes) -> str:
             return ""
     return f"[binary document: {filename}] — text extraction deferred to a parser."
 
+
 @router.post("/{bid_id}/required-documents/{rd_id}/upload", response_model=RequiredDocumentOut, status_code=201)
 async def upload_required_document(
-    bid_id: str,
-    rd_id: str,
-    request: Request,
-    file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db)
+    bid_id: str, rd_id: str, request: Request, file: UploadFile = File(...), db: AsyncSession = Depends(get_db)
 ):
     bid = (await db.execute(select(Bid).where(Bid.id == bid_id))).scalar_one_or_none()
     if not bid:
         raise HTTPException(status_code=404, detail="Bid not found")
 
-    rd = (await db.execute(select(RequiredDocument).where(RequiredDocument.id == rd_id, RequiredDocument.bid_id == bid_id))).scalar_one_or_none()
+    rd = (
+        await db.execute(
+            select(RequiredDocument).where(RequiredDocument.id == rd_id, RequiredDocument.bid_id == bid_id)
+        )
+    ).scalar_one_or_none()
     if not rd:
         raise HTTPException(status_code=404, detail="Required Document not found")
 
@@ -62,38 +65,40 @@ async def upload_required_document(
         rd.extracted_metadata = None
 
     from datetime import UTC
+
     rd.status = "done" if verification.get("status") == "matched" else "gap"
     rd.uploaded_by = request.headers.get("X-User-ID") or "anonymous"
     rd.uploaded_at = datetime.now(UTC)
     rd.uploaded_filename = filename
     rd.link_original_doc = f"/ms/dashboard/mock-documents/{filename}"
     rd.link_parsed_doc = f"/ms/dashboard/mock-documents/{filename}?parsed=true"
-    rd.user_override = False # Reset user override on new uploads
+    rd.user_override = False  # Reset user override on new uploads
 
     activity.record(
         db,
         bid_id,
         rd.uploaded_by,
         "required_document.uploaded",
-        {"rd_id": rd.id, "filename": filename, "verification": verification}
+        {"rd_id": rd.id, "filename": filename, "verification": verification},
     )
     await db.commit()
     await db.refresh(rd)
     return rd
 
+
 @router.post("/{bid_id}/required-documents/{rd_id}/override", response_model=RequiredDocumentOut)
 async def override_required_document_status(
-    bid_id: str,
-    rd_id: str,
-    body: RequiredDocOverrideIn,
-    request: Request,
-    db: AsyncSession = Depends(get_db)
+    bid_id: str, rd_id: str, body: RequiredDocOverrideIn, request: Request, db: AsyncSession = Depends(get_db)
 ):
     bid = (await db.execute(select(Bid).where(Bid.id == bid_id))).scalar_one_or_none()
     if not bid:
         raise HTTPException(status_code=404, detail="Bid not found")
 
-    rd = (await db.execute(select(RequiredDocument).where(RequiredDocument.id == rd_id, RequiredDocument.bid_id == bid_id))).scalar_one_or_none()
+    rd = (
+        await db.execute(
+            select(RequiredDocument).where(RequiredDocument.id == rd_id, RequiredDocument.bid_id == bid_id)
+        )
+    ).scalar_one_or_none()
     if not rd:
         raise HTTPException(status_code=404, detail="Required Document not found")
 
@@ -104,13 +109,7 @@ async def override_required_document_status(
     rd.user_override = True
 
     actor = request.headers.get("X-User-ID") or "anonymous"
-    activity.record(
-        db,
-        bid_id,
-        actor,
-        "required_document.override",
-        {"rd_id": rd.id, "status": body.status}
-    )
+    activity.record(db, bid_id, actor, "required_document.override", {"rd_id": rd.id, "status": body.status})
     await db.commit()
     await db.refresh(rd)
     return rd

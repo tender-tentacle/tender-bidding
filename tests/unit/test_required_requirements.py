@@ -24,7 +24,6 @@ async def test_extract_required_documents():
     assert len(ref_docs) >= 2
 
 
-
 @pytest.mark.asyncio
 async def test_extract_bidding_deadlines_fallback():
     ai = MockAIClient()

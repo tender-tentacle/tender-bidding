@@ -33,9 +33,9 @@ async def test_mock_ai_extract_required_documents_with_4c():
         "selection_criteria": {
             "technical_ability": {
                 "references": "At least 3 references",
-                "educational_and_professional_qualifications": "Must have Scrum Master"
+                "educational_and_professional_qualifications": "Must have Scrum Master",
             }
-        }
+        },
     }
     docs = await ai.extract_required_documents(snapshot)
 
@@ -71,6 +71,7 @@ def test_portal_key_mapping():
 @pytest.mark.asyncio
 async def test_real_ai_client_raises_on_failure(mocker):
     import httpx
+
     # Mock httpx.AsyncClient.post to return a non-200 status code
     mock_response = mocker.Mock(spec=httpx.Response)
     mock_response.status_code = 500
@@ -94,6 +95,7 @@ async def test_real_ai_client_raises_on_failure(mocker):
 @pytest.mark.asyncio
 async def test_real_ai_client_raises_on_httpx_exception(mocker):
     import httpx
+
     # Mock httpx.AsyncClient.post to raise an httpx exception
     mocker.patch("httpx.AsyncClient.post", side_effect=httpx.RequestError("Connection failed"))
     mocker.patch("core.ai_client._sync_prompt", return_value=None)
@@ -106,4 +108,3 @@ async def test_real_ai_client_raises_on_httpx_exception(mocker):
 
     with pytest.raises(httpx.RequestError):
         await client.extract_bidding_deadlines({"source_ref": "test"})
-

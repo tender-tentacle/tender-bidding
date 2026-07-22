@@ -6,7 +6,7 @@ from sqlalchemy import text
 
 
 @pytest.mark.asyncio
-@patch('core.schema_validator.verify_schema_integrity')
+@patch("core.schema_validator.verify_schema_integrity")
 async def test_init_db_adds_selection_criteria_column(mock_verify):
     """
     Test that if the bid table already exists but lacks the selection_criteria column,
@@ -17,12 +17,14 @@ async def test_init_db_adds_selection_criteria_column(mock_verify):
         await conn.run_sync(Base.metadata.drop_all)
 
         # 2. Create the bid table manually WITHOUT selection_criteria
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             CREATE TABLE bid (
                 id CHAR(36) PRIMARY KEY,
                 title VARCHAR(255)
             )
-        """))
+        """)
+        )
 
         # 3. Verify selection_criteria does NOT exist yet
         cols_res = await conn.execute(text("PRAGMA table_info(bid)"))
@@ -39,7 +41,9 @@ async def test_init_db_adds_selection_criteria_column(mock_verify):
         assert "selection_criteria" in existing_cols
 
         # Verify it can be written to
-        await conn.execute(text("INSERT INTO bid (id, title, selection_criteria) VALUES ('123', 'Test', '{\"foo\": \"bar\"}')"))
+        await conn.execute(
+            text("INSERT INTO bid (id, title, selection_criteria) VALUES ('123', 'Test', '{\"foo\": \"bar\"}')")
+        )
         res = await conn.execute(text("SELECT selection_criteria FROM bid WHERE id = '123'"))
         val = res.scalar_one()
         assert val == '{"foo": "bar"}'

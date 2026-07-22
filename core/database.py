@@ -26,6 +26,7 @@ if not _url:
         _url = f"mssql+aioodbc://{sql_user}:{sql_password}@{sql_server}:1433/{db_name}?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=no&MARS_Connection=yes"
     else:
         import sys
+
         if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
             # Local SQLite fallback. Prefer /data (Docker named volume) when writable,
             # else the service directory — never crash on an unwritable /data (dev/tests).
@@ -74,6 +75,7 @@ async def init_db() -> None:
 
         # Safe migration patch: check and add new columns to bid_required_document
         from sqlalchemy import text
+
         if _url.startswith("sqlite"):
             cols_res = await conn.execute(text("PRAGMA table_info(bid_required_document)"))
             existing_cols = {row[1] for row in cols_res.fetchall()}
@@ -88,7 +90,7 @@ async def init_db() -> None:
                 ("uploaded_by", "VARCHAR(255)"),
                 ("uploaded_at", "DATETIME"),
                 ("uploaded_filename", "VARCHAR(500)"),
-                ("extracted_metadata", "JSON")
+                ("extracted_metadata", "JSON"),
             ]:
                 if col not in existing_cols:
                     await conn.execute(text(f"ALTER TABLE bid_required_document ADD COLUMN {col} {col_type}"))
@@ -100,10 +102,17 @@ async def init_db() -> None:
                 await conn.execute(text("ALTER TABLE bid ADD COLUMN selection_criteria JSON"))
                 logger.info("SQLite migration: Added column selection_criteria to bid")
             for col in [
-                "matched_labels", "matched_sectors", "matched_services",
-                "matched_people", "matched_campaigns", "matched_trends",
-                "matched_practices", "matched_clusters", "matched_ressorts",
-                "matched_horizontals", "classification_matches"
+                "matched_labels",
+                "matched_sectors",
+                "matched_services",
+                "matched_people",
+                "matched_campaigns",
+                "matched_trends",
+                "matched_practices",
+                "matched_clusters",
+                "matched_ressorts",
+                "matched_horizontals",
+                "classification_matches",
             ]:
                 if col not in existing_cols:
                     await conn.execute(text(f"ALTER TABLE bid ADD COLUMN {col} JSON"))
@@ -126,7 +135,7 @@ async def init_db() -> None:
                 ("uploaded_by", "NVARCHAR(255)"),
                 ("uploaded_at", "DATETIMEOFFSET"),
                 ("uploaded_filename", "NVARCHAR(500)"),
-                ("extracted_metadata", "NVARCHAR(MAX)")
+                ("extracted_metadata", "NVARCHAR(MAX)"),
             ]:
                 check_sql = f"""
                 IF COL_LENGTH('bid_required_document', '{col}') IS NULL
@@ -145,10 +154,17 @@ async def init_db() -> None:
             await conn.execute(text(check_sql_bid))
 
             for col in [
-                "matched_labels", "matched_sectors", "matched_services",
-                "matched_people", "matched_campaigns", "matched_trends",
-                "matched_practices", "matched_clusters", "matched_ressorts",
-                "matched_horizontals", "classification_matches"
+                "matched_labels",
+                "matched_sectors",
+                "matched_services",
+                "matched_people",
+                "matched_campaigns",
+                "matched_trends",
+                "matched_practices",
+                "matched_clusters",
+                "matched_ressorts",
+                "matched_horizontals",
+                "classification_matches",
             ]:
                 check_sql_col = f"""
                 IF COL_LENGTH('bid', '{col}') IS NULL
@@ -167,6 +183,7 @@ async def init_db() -> None:
             await conn.execute(text(check_sql_checklist))
 
         from core.schema_validator import verify_schema_integrity
+
         await conn.run_sync(verify_schema_integrity, Base)
 
     logger.info(f"🔌 Bidding DB ready at {_url.split('@')[-1]}")
@@ -175,11 +192,13 @@ async def init_db() -> None:
 
     await seed_portal_guides()
 
+
 import logging
 
 from sqlalchemy import event
 
 db_logger = logging.getLogger("schema-validator")
+
 
 @event.listens_for(engine.sync_engine, "handle_error")
 def receive_handle_error(exception_context):
