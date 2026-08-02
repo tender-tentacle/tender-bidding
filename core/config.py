@@ -33,3 +33,6 @@ AI_URL: str = os.getenv("AI_URL", "http://ai:8004")
 ENRICHING_URL: str = os.getenv("ENRICHING_URL", "http://enriching:8002")
 
 ALLOWED_ORIGINS: str = os.getenv("ALLOWED_ORIGINS", "http://localhost:8009")
+
+DISTRIBUTION_MS_URL: str = os.getenv("DISTRIBUTION_URL", "http://distributing:8005")
+CRAWLING_MS_URL: str = os.getenv("CRAWLING_URL", "http://tender-crawling:8001")

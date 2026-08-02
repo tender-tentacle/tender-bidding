@@ -10,6 +10,8 @@ The dashboard shows bid preparation on the tender detail page. It depends on:
 In-process contract check, same hermetic style as the other pact files.
 """
 
+from datetime import UTC
+
 import pytest
 from tests.helpers import api_client
 
@@ -88,3 +90,22 @@ async def test_health_probe_for_optional_deployment():
         r = await client.get("/health")
         assert r.status_code == 200
         assert r.json()["service"] == "bidding"
+
+@pytest.mark.asyncio
+async def test_company_profile_honours_dashboard_contract():
+    from datetime import datetime
+
+    from api.v1.company_profile import CompanyProfile
+    from core.database import SessionLocal
+
+    company_id = "pact-company"
+    async with SessionLocal() as db_session:
+        db_session.add(CompanyProfile(company_id=company_id, description="Pact test", crawled_date=datetime.now(UTC).replace(tzinfo=None)))
+        await db_session.commit()
+
+    async with api_client() as client:
+        resp = await client.get(f"/company/{company_id}/profile")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert set(body.keys()) >= {"company_id", "crawled_date"}
+        assert body["company_id"] == "pact-company"

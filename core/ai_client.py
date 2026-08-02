@@ -42,6 +42,18 @@ class AIClient:
     async def extract_bidding_deadlines(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         raise NotImplementedError
 
+    async def extract_bidding_strategy(self, snapshot: dict[str, Any]) -> dict[str, Any]:
+        raise NotImplementedError
+
+    async def extract_tender_metadata(self, snapshot: dict[str, Any]) -> dict[str, str]:
+        raise NotImplementedError
+
+    async def evaluate_historic_competition(self, historic_tenders: list, company_id: str) -> dict[str, str]:
+        raise NotImplementedError
+
+    async def extract_company_summary(self, category: str, data: dict[str, Any]) -> dict[str, str]:
+        raise NotImplementedError
+
     async def verify_document(self, requirement: str, document_markdown: str) -> dict[str, str]:
         raise NotImplementedError
 
@@ -80,6 +92,9 @@ class MockAIClient(AIClient):
         if not q:
             return [0.0 for _ in texts]
         return [len(q & toks(t)) / len(q) for t in texts]
+
+    async def extract_company_summary(self, category: str, data: dict[str, Any]) -> dict[str, str]:
+        return {"summary": f"[MOCK] AI summary for {category} based on data"}
 
     # Fallback categories when the uploaded matrix has no parseable structure —
     # the classic German public-sector bid/no-bid criteria set. Each explanation
@@ -481,6 +496,43 @@ class MockAIClient(AIClient):
         )
         return out
 
+    async def extract_bidding_strategy(self, snapshot: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "strategy": "Dies ist eine Mock-Empfehlung. Fokussiere auf Qualität bei diesem Kunden.",
+            "strengths": ["Gute historische Liefertreue", "Bekannter Technologie-Stack"],
+            "warnings": ["Budgetkürzungen wahrscheinlich", "Hoher Wettbewerb"]
+        }
+
+    async def extract_historical_evidence(self, buyer_name: str) -> dict[str, Any]:
+        return {
+            "award_median": "€3,800,000",
+            "accepted_rate_corridor": "€120 - €145 / hr",
+            "budget_amendment_rate": "High (60% expanded)"
+        }
+
+    async def extract_tender_metadata(self, snapshot: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "price_quality_ratio": "70% Quality / 30% Price",
+            "target_budget": "€250,000",
+            "procurement_procedure": "Offenes Verfahren",
+            "company_description": "Company described in tender documents as a leading service provider.",
+            "key_dates": [
+                {"kind": "submission", "date": "2026-12-31T23:59:59Z"},
+                {"kind": "delivery", "date": "2027-01-15T00:00:00Z"}
+            ],
+            "required_documents": [
+                {"document_name": "ISO 27001 Certificate", "category": "compliance", "is_mandatory": True},
+                {"document_name": "Sustainability Report 2025", "category": "esg", "is_mandatory": True},
+                {"document_name": "Trade Register Excerpt", "category": "legal", "is_mandatory": True}
+            ]
+        }
+
+    async def evaluate_historic_competition(self, historic_tenders: list, company_id: str) -> dict[str, str]:
+        return {
+            "incumbent_advantage_summary": "Low incumbent advantage as multiple companies have won recently.",
+            "competitor_density_summary": "High density, average of 5 bidders per tender."
+        }
+
     async def verify_document(self, requirement: str, doc_markdown: str) -> dict[str, Any]:
         text = (doc_markdown or "").lower()
         req_terms = [w for w in re.split(r"\W+", requirement.lower()) if len(w) > 4]
@@ -628,6 +680,63 @@ class RealAIClient(AIClient):
     async def extract_deadlines(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         return await self._fallback.extract_deadlines(snapshot)
 
+    async def extract_bidding_strategy(self, snapshot: dict[str, Any]) -> dict[str, Any]:
+        return await self._fallback.extract_bidding_strategy(snapshot)
+
+    async def extract_company_summary(self, category: str, data: dict[str, Any]) -> dict[str, str]:
+        import httpx
+
+        try:
+            await _sync_prompt(category, await _configured_prompt(category))
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    f"{AI_URL}/api/inference",
+                    json={
+                        "prompt_id": category,
+                        "tender_data": data,
+                        "output_structure": {
+                            "summary": "str"
+                        },
+                    },
+                )
+                if resp.status_code == 200:
+                    res_data = resp.json()
+                    if res_data.get("status") == "success":
+                        return res_data.get("data", {})
+                raise RuntimeError(f"AI service returned status code {resp.status_code}: {resp.text}")
+        except Exception as e:
+            logger.error(f"Error calling AI for {category}: {e}")
+            return await self._fallback.extract_company_summary(category, data)
+
+    async def extract_historical_evidence(self, buyer_name: str) -> dict[str, Any]:
+        import httpx
+
+        try:
+            await _sync_prompt("bidding_historical_evidence", await _configured_prompt("bidding_historical_evidence"))
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    f"{AI_URL}/api/inference",
+                    json={
+                        "prompt_id": "bidding_historical_evidence",
+                        "tender_data": {"buyer_name": buyer_name},
+                        "output_structure": {
+                            "award_median": "str",
+                            "accepted_rate_corridor": "str",
+                            "budget_amendment_rate": "str"
+                        },
+                    },
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("status") == "success":
+                        result = data.get("data")
+                        if result is not None:
+                            return result
+                raise RuntimeError(f"AI service returned status code {resp.status_code}: {resp.text}")
+        except Exception as e:
+            logger.error(f"Error calling AI for historical evidence: {e}")
+            return await self._fallback.extract_historical_evidence(buyer_name)
+
     async def extract_required_documents(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         import httpx
 
@@ -693,6 +802,101 @@ class RealAIClient(AIClient):
                 raise RuntimeError(f"AI service returned status code {resp.status_code}: {resp.text}")
         except Exception as e:
             logger.error(f"Error calling AI for deadlines: {e}")
+            raise
+
+    async def extract_bidding_strategy(self, snapshot: dict[str, Any]) -> dict[str, Any]:
+        import httpx
+
+        try:
+            await _sync_prompt("bidding_strategy", await _configured_prompt("bidding_strategy"))
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    f"{AI_URL}/api/inference",
+                    json={
+                        "prompt_id": "bidding_strategy",
+                        "tender_data": snapshot,
+                        "output_structure": {
+                            "strategy": "str",
+                            "strengths": ["str"],
+                            "warnings": ["str"]
+                        },
+                    },
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("status") == "success":
+                        return data.get("data", {})
+                raise RuntimeError(f"AI service returned status code {resp.status_code}: {resp.text}")
+        except Exception as e:
+            logger.error(f"Error calling AI for strategy: {e}")
+            return await self._fallback.extract_bidding_strategy(snapshot)
+
+    async def extract_tender_metadata(self, snapshot: dict[str, Any]) -> dict[str, Any]:
+        import httpx
+        prompt = """
+Du bist ein Experte für öffentliche Ausschreibungen.
+Analysiere die bereitgestellten Ausschreibungsdaten (und Dokumente) und extrahiere die folgenden Informationen sehr gründlich:
+- price_quality_ratio: Das Verhältnis von Preis zu Qualität (z.B. "70% Qualität / 30% Preis"). Suche nach "Zuschlagskriterien", "Wertung" etc.
+- target_budget: Das geschätzte Auftragsvolumen (z.B. "250.000 EUR"). Suche nach "Schätzwert", "Budget", "Auftragswert".
+- procurement_procedure: Die Art des Vergabeverfahrens (z.B. "Offenes Verfahren"). Suche nach "Verfahrensart".
+- company_description: Kurze Beschreibung des Auftraggebers.
+- key_dates: Termine wie "Schlusstermin/Abgabefrist" (submission), "Beginn/Lieferung" (start/delivery). Gib sie als ISO8601 String an.
+- required_documents: Nachweise, aufgeteilt in "legal" (Rechtliches/Handelsregister), "compliance" (Regulatorisches/Compliance), "esg" (Umwelt/Soziales/Nachhaltigkeit). Setze is_mandatory entsprechend.
+Gib IMMER einen sinnvollen Standardwert wie 'Nicht spezifiziert' oder 'Unbekannt' an, falls ein Feld absolut nicht auffindbar ist, aber suche sehr genau in allen Texten.
+""".strip()
+        try:
+            await _sync_prompt("bidding_tender_metadata", prompt)
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    f"{AI_URL}/api/inference",
+                    json={
+                        "prompt_id": "bidding_tender_metadata",
+                        "tender_data": snapshot,
+                        "output_structure": {
+                            "price_quality_ratio": "str",
+                            "target_budget": "str",
+                            "procurement_procedure": "str",
+                            "company_description": "str",
+                            "key_dates": [{"kind": "str (submission, delivery, start, etc)", "date": "str (YYYY-MM-DDTHH:MM:SSZ)"}],
+                            "required_documents": [{"document_name": "str", "category": "str (legal, compliance, esg)", "is_mandatory": "bool"}]
+                        },
+                    },
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("status") == "success":
+                        return data.get("data", {})
+                raise RuntimeError(f"AI service returned status code {resp.status_code}: {resp.text}")
+        except Exception as e:
+            logger.error(f"Error calling AI for tender metadata: {e}")
+            return await self._fallback.extract_tender_metadata(snapshot)
+
+    async def evaluate_historic_competition(self, historic_tenders: list, company_id: str) -> dict[str, str]:
+        import httpx
+        try:
+            await _sync_prompt("bidding_historic_competition", "Beantworte aus den historischen Tenders: Incumbent advantage and density of competing bidders.")
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    f"{AI_URL}/api/inference",
+                    json={
+                        "prompt_id": "bidding_historic_competition",
+                        "tender_data": {"tenders": historic_tenders, "company_id": company_id},
+                        "output_structure": {
+                            "incumbent_advantage_summary": "str",
+                            "competitor_density_summary": "str"
+                        },
+                    },
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("status") == "success":
+                        return data.get("data", {})
+                raise RuntimeError(f"AI service returned status code {resp.status_code}: {resp.text}")
+        except Exception as e:
+            logger.error(f"Error calling AI for historic competition: {e}")
+            return await self._fallback.evaluate_historic_competition(historic_tenders, company_id)
+        except Exception as e:
+            logger.error(f"Error calling AI for bidding strategy: {e}")
             raise
 
     async def verify_document(self, requirement: str, doc_markdown: str) -> dict[str, Any]:

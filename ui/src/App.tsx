@@ -33,10 +33,10 @@ const KIND_LABEL: Record<string, string> = {
 const SERVICES = [
   { name: "Crawling", path: "/ms/crawling/" },
   { name: "Enriching", path: "/ms/enriching/" },
+  { name: "Bidding", path: "/ms/bidding/", active: true },
   { name: "AI Service", path: "/ms/ai/" },
   { name: "IAM", path: "/ms/iam/admin" },
   { name: "Distributing", path: "/ms/distributing/" },
-  { name: "Bidding", path: "/ms/bidding/", active: true },
 ];
 
 type TagVariant = "primary" | "secondary" | "info" | "warning" | "success" | "error";
@@ -242,6 +242,7 @@ const WEIGHT_CHOICES = ["1", "2", "3", "4", "5"];
 const PROMPT_LABEL: Record<string, string> = {
   bidding_required_documents: "Requirement detection prompt",
   bidding_deadlines: "Date detection prompt",
+  bidding_strategy: "Bidding strategy prompt",
 };
 
 function KpiTiles() {

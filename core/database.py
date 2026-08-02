@@ -61,6 +61,11 @@ class Base(DeclarativeBase):
     pass
 
 
+from core.orm_validation import register_orm_validation_listeners
+
+register_orm_validation_listeners(Base)
+
+
 async def get_db():
     async with SessionLocal() as session:
         yield session
@@ -118,11 +123,39 @@ async def init_db() -> None:
                     await conn.execute(text(f"ALTER TABLE bid ADD COLUMN {col} JSON"))
                     logger.info(f"SQLite migration: Added column {col} to bid")
 
+            for col in [
+                "price_quality_ratio",
+                "target_budget",
+                "procurement_procedure"
+            ]:
+                if col not in existing_cols:
+                    await conn.execute(text(f"ALTER TABLE bid ADD COLUMN {col} VARCHAR(255)"))
+                    logger.info(f"SQLite migration: Added column {col} to bid")
+
             cols_res = await conn.execute(text("PRAGMA table_info(bid_checklist_item)"))
             existing_cols = {row[1] for row in cols_res.fetchall()}
             if "metadata_json" not in existing_cols:
                 await conn.execute(text("ALTER TABLE bid_checklist_item ADD COLUMN metadata_json JSON"))
                 logger.info("SQLite migration: Added column metadata_json to bid_checklist_item")
+
+            cols_res = await conn.execute(text("PRAGMA table_info(company_profiles)"))
+            existing_cols = {row[1] for row in cols_res.fetchall()}
+            for col, col_type in [
+                ("financial_summary", "TEXT"),
+                ("financial_summary_date", "DATETIME"),
+                ("hiring_summary", "TEXT"),
+                ("hiring_summary_date", "DATETIME"),
+                ("buyer_reputation_summary", "TEXT"),
+                ("buyer_reputation_summary_date", "DATETIME"),
+                ("mhp_reputation_summary", "TEXT"),
+                ("mhp_reputation_summary_date", "DATETIME"),
+                ("company_description", "TEXT"),
+                ("incumbent_advantage_summary", "TEXT"),
+                ("competitor_density_summary", "TEXT"),
+            ]:
+                if col not in existing_cols:
+                    await conn.execute(text(f"ALTER TABLE company_profiles ADD COLUMN {col} {col_type}"))
+                    logger.info(f"SQLite migration: Added column {col} to company_profiles")
         else:
             for col, col_type in [
                 ("short_summary", "NVARCHAR(MAX)"),
@@ -174,6 +207,19 @@ async def init_db() -> None:
                 """
                 await conn.execute(text(check_sql_col))
 
+            for col in [
+                "price_quality_ratio",
+                "target_budget",
+                "procurement_procedure"
+            ]:
+                check_sql_col = f"""
+                IF COL_LENGTH('bid', '{col}') IS NULL
+                BEGIN
+                    ALTER TABLE bid ADD {col} NVARCHAR(255) NULL
+                END
+                """
+                await conn.execute(text(check_sql_col))
+
             check_sql_checklist = """
             IF COL_LENGTH('bid_checklist_item', 'metadata_json') IS NULL
             BEGIN
@@ -181,6 +227,62 @@ async def init_db() -> None:
             END
             """
             await conn.execute(text(check_sql_checklist))
+
+            for col, col_type in [
+                ("financial_summary", "NVARCHAR(MAX)"),
+                ("financial_summary_date", "DATETIMEOFFSET"),
+                ("hiring_summary", "NVARCHAR(MAX)"),
+                ("hiring_summary_date", "DATETIMEOFFSET"),
+                ("buyer_reputation_summary", "NVARCHAR(MAX)"),
+                ("buyer_reputation_summary_date", "DATETIMEOFFSET"),
+                ("mhp_reputation_summary", "NVARCHAR(MAX)"),
+                ("mhp_reputation_summary_date", "DATETIMEOFFSET"),
+                ("company_description", "NVARCHAR(MAX)"),
+                ("incumbent_advantage_summary", "NVARCHAR(MAX)"),
+                ("competitor_density_summary", "NVARCHAR(MAX)"),
+            ]:
+                check_sql_col = f"""
+                IF COL_LENGTH('company_profiles', '{col}') IS NULL
+                BEGIN
+                    ALTER TABLE company_profiles ADD {col} {col_type} NULL
+                END
+                """
+                await conn.execute(text(check_sql_col))
+
+            check_sql_company_mood = """
+            IF OBJECT_ID('bid_company_mood', 'U') IS NULL
+            BEGIN
+                CREATE TABLE bid_company_mood (
+                    id NVARCHAR(32) PRIMARY KEY,
+                    company_id NVARCHAR(255),
+                    comment_hash NVARCHAR(64),
+                    title NVARCHAR(1000),
+                    content NVARCHAR(MAX),
+                    rating INT,
+                    published_date NVARCHAR(255),
+                    crawled_date DATETIMEOFFSET
+                )
+            END
+            """
+            await conn.execute(text(check_sql_company_mood))
+
+            check_sql_company_register = """
+            IF OBJECT_ID('bid_company_register_entry', 'U') IS NULL
+            BEGIN
+                CREATE TABLE bid_company_register_entry (
+                    id NVARCHAR(32) PRIMARY KEY,
+                    company_id NVARCHAR(255),
+                    hash NVARCHAR(64),
+                    title NVARCHAR(1000),
+                    link NVARCHAR(1000),
+                    content NVARCHAR(MAX),
+                    category NVARCHAR(255),
+                    published_date NVARCHAR(255),
+                    crawled_date DATETIMEOFFSET
+                )
+            END
+            """
+            await conn.execute(text(check_sql_company_register))
 
         from core.schema_validator import verify_schema_integrity
 

@@ -60,6 +60,36 @@ async def test_enrich_tender_success(mocker):
 
 
 @pytest.mark.asyncio
+async def test_by_source_auto_initializes_from_enriching(mocker):
+    mock_response = mocker.MagicMock(spec=httpx.Response)
+    mock_response.status_code = 200
+    mock_response.json = lambda: {
+        "id": "99999999-8888-7777-6666-555555555555",
+        "external_id": "EXT-AUTO-999",
+        "title": "Auto-Initialized Tender Bid",
+        "customer": "Stadt Test",
+        "source_system": "Öffentliche Vergabe",
+    }
+
+    original_get = httpx.AsyncClient.get
+
+    async def mock_get(self, url, *args, **kwargs):
+        if "enriching" in str(url):
+            return mock_response
+        return await original_get(self, url, *args, **kwargs)
+
+    mocker.patch("httpx.AsyncClient.get", mock_get)
+
+    async with api_client() as client:
+        # Looking up unenriched / unknown bid directly by tender UUID automatically initializes bid workspace
+        resp = await client.get("/bids/by-source/99999999-8888-7777-6666-555555555555")
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["source_ref"] == "EXT-AUTO-999"
+        assert data["title"] == "Auto-Initialized Tender Bid"
+
+
+@pytest.mark.asyncio
 async def test_enrich_group_success(mocker):
     # Mock calls for group and members
     original_get = httpx.AsyncClient.get

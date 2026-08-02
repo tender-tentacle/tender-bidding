@@ -3,8 +3,11 @@ deadlines, portal guide, activity."""
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Annotated
+
+logger = logging.getLogger("bidding")
 
 from core.database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -39,8 +42,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 router = APIRouter(prefix="/bids", tags=["bids"])
 
 
+from sqlalchemy.orm import selectinload
+
+
 async def _load(db: AsyncSession, bid_id: str) -> Bid:
-    bid = (await db.execute(select(Bid).where(Bid.id == bid_id))).scalar_one_or_none()
+    bid = (
+        await db.execute(
+            select(Bid)
+            .options(
+                selectinload(Bid.collaborators),
+                selectinload(Bid.documents),
+                selectinload(Bid.required_documents),
+                selectinload(Bid.key_dates),
+            )
+            .where(Bid.id == bid_id)
+        )
+    ).scalar_one_or_none()
     if not bid:
         raise HTTPException(status_code=404, detail="Bid not found")
     return bid
@@ -87,30 +104,45 @@ async def get_bid_by_source(source_ref: str, db: Annotated[AsyncSession, Depends
     ).scalar_one_or_none()
 
     if not bid:
-        # Fallback for bids that predate enriching_id: resolve UUID → external_id
+        # Fallback for bids that predate enriching_id or auto-initialize: resolve UUID → external_id
         # via enriching (best-effort; bidding stays usable when enriching is down).
         import httpx
         from core.config import ENRICHING_URL
-        from services.bid_service import get_by_source_ref
+        from services.bid_service import create_bid_from_snapshot, get_by_source_ref
 
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 resp = await client.get(f"{ENRICHING_URL}/api/v1/tenders/{source_ref}")
                 if resp.status_code == 200:
-                    ext_id = resp.json().get("external_id")
-                    if ext_id:
-                        bid = await get_by_source_ref(db, ext_id)
+                    t_data = resp.json()
+                    ext_id = t_data.get("external_id") or t_data.get("id") or source_ref
+                    bid = await get_by_source_ref(db, ext_id)
+                    if not bid:
+                        payload = dict(t_data)
+                        payload["source_ref"] = ext_id
+                        payload["enriching_id"] = str(t_data.get("id") or source_ref)
+                        payload["source_kind"] = "tender"
+                        bid, _ = await create_bid_from_snapshot(db, payload)
+                        await db.commit()
                 else:
-                    g_resp = await client.get(f"{ENRICHING_URL}/api/v1/groups/{source_ref}")
+                    g_resp = await client.get(f"{ENRICHING_URL}/api/v1/tenders/groups/{source_ref}")
                     if g_resp.status_code == 200:
-                        bid = await get_by_source_ref(db, source_ref)
-        except Exception:
-            # Ignore errors and proceed without a bid (fallback best-effort behavior)
-            pass
+                        g_data = g_resp.json()
+                        ext_id = g_data.get("id") or source_ref
+                        bid = await get_by_source_ref(db, ext_id)
+                        if not bid:
+                            payload = dict(g_data)
+                            payload["source_ref"] = ext_id
+                            payload["enriching_id"] = str(g_data.get("id") or source_ref)
+                            payload["source_kind"] = "group"
+                            bid, _ = await create_bid_from_snapshot(db, payload)
+                            await db.commit()
+        except Exception as err:
+            logger.debug("Failed to create bid from snapshot fallback: %s", err)
 
     if not bid:
         raise HTTPException(status_code=404, detail=f"No bid workspace for source_ref {source_ref}")
-    return _detail(bid)
+    return _detail(await _load(db, bid.id))
 
 
 @router.get("/{bid_id}", response_model=BidDetail)
@@ -345,13 +377,25 @@ async def _fetch_tender_data(source_id: str, source_kind: str) -> dict:
 
                 # Combine parsed documents text for the group
                 combined_texts = []
-                for member in tender_data.get("members", []):
-                    combined_texts.append(member.get("title") or "")
-                    combined_texts.append(member.get("description") or "")
-                    # Fetch raw text of member tender if available
-                    raw_resp = await client.get(f"{ENRICHING_URL}/api/v1/tenders/{member['id']}/raw")
-                    if raw_resp.status_code == 200:
-                        combined_texts.append(raw_resp.json().get("document_text") or "")
+                for member in tender_data.get("members", []) or []:
+                    if isinstance(member, dict):
+                        combined_texts.append(member.get("title") or "")
+                        combined_texts.append(member.get("description") or "")
+                        m_id = member.get("id")
+                        if m_id:
+                            try:
+                                raw_resp = await client.get(f"{ENRICHING_URL}/api/v1/tenders/{m_id}/raw")
+                                if raw_resp.status_code == 200:
+                                    combined_texts.append(raw_resp.json().get("document_text") or "")
+                            except Exception as raw_e:
+                                logger.warning(f"Failed to fetch raw text for member {m_id}: {raw_e}")
+                    elif isinstance(member, str):
+                        try:
+                            raw_resp = await client.get(f"{ENRICHING_URL}/api/v1/tenders/{member}/raw")
+                            if raw_resp.status_code == 200:
+                                combined_texts.append(raw_resp.json().get("document_text") or "")
+                        except Exception as raw_e:
+                            logger.warning(f"Failed to fetch raw text for member {member}: {raw_e}")
                 tender_data["document_text"] = "\n".join(combined_texts)
     except httpx.RequestError as exc:
         raise HTTPException(status_code=503, detail=f"Enriching service at {ENRICHING_URL} is unreachable: {exc}")
@@ -482,10 +526,19 @@ async def enrich_bid_requirements(
         bid, _ = await create_bid_from_snapshot(db, snapshot)
     bid.enriching_id = source_id
 
-    # 3. Call AI Client to extract required documents & deadlines
+    # 3. Call AI Client to extract required documents & deadlines (fallback to [] on AI errors/rate limits)
     ai = get_ai_client()
-    docs_payload = await ai.extract_required_documents(tender_data)
-    deadlines_payload = await ai.extract_bidding_deadlines(tender_data)
+    try:
+        docs_payload = await ai.extract_required_documents(tender_data)
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to extract required documents via AI: {e}. Falling back to empty list.")
+        docs_payload = []
+
+    try:
+        deadlines_payload = await ai.extract_bidding_deadlines(tender_data)
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to extract bidding deadlines via AI: {e}. Falling back to empty list.")
+        deadlines_payload = []
 
     # 4. Truncate previous required documents and deadlines
     await db.execute(delete(RequiredDocument).where(RequiredDocument.bid_id == bid.id))
@@ -509,6 +562,164 @@ async def enrich_bid_requirements(
         _actor(request),
         "bid.requirements_enriched",
         {"documents": len(docs_payload), "deadlines": len(deadlines_payload)},
+    )
+    await db.commit()
+    await db.refresh(bid)
+
+    return _detail(bid)
+
+
+@router.post("/by-source/{source_ref}/evaluate-pricing")
+async def evaluate_pricing_quality_endpoint(
+    source_ref: str,
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Trigger the Pricing Quality AI evaluation and cache it."""
+    from services.bid_service import get_by_source_ref
+    from services.pricing_evaluation import evaluate_pricing_strategy
+
+    bid = await get_by_source_ref(db, source_ref)
+    if not bid:
+        raise HTTPException(status_code=404, detail="Bid workspace not found for this source")
+
+    try:
+        result = await evaluate_pricing_strategy(db, bid)
+        return {"status": "success", "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{bid_id}/extract-metadata", response_model=BidDetail)
+async def extract_bid_metadata(
+    bid_id: str, request: Request, db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Trigger the AI extraction of Price/Quality Ratio, Target Budget, Procurement Procedure and Company Description."""
+    from core.ai_client import get_ai_client
+    from services.bid_service import create_bid_from_snapshot
+    from sqlalchemy import select as sa_select
+
+    from api.v1.company_profile import CompanyProfile
+
+    print("=== EXTRACT_BID_METADATA CALLED ===")
+    try:
+        bid = await _load(db, bid_id)
+        print("=== BID LOADED ===", bid)
+    except HTTPException as e:
+        print("=== HTTPException CAUGHT ===", e)
+        if e.status_code == 404:
+            # Try to auto-create from enriching
+            try:
+                # We assume bid_id is the source_ref (group ID or tender ID)
+                # Usually we don't know the kind, but we can try group first or fetch both
+                # Actually _fetch_tender_data requires source_kind. We'll default to "group"
+                # if it's a UUID since it's used on the group page, but let's try tender first if possible.
+                print("=== TRYING TO FETCH TENDER DATA ===")
+                try:
+                    tender_data = await _fetch_tender_data(bid_id, "group")
+                    source_kind = "group"
+                except Exception as ex1:
+                    print("=== FETCH GROUP FAILED ===", ex1)
+                    tender_data = await _fetch_tender_data(bid_id, "tender")
+                    source_kind = "tender"
+
+                if source_kind == "tender":
+                    source_ref = tender_data.get("external_id") or bid_id
+                    title = tender_data.get("title") or "Untitled Bid"
+                    customer = tender_data.get("customer")
+                    source_system = tender_data.get("source_system") or "Unknown"
+                    driver_user_id = tender_data.get("assigned_user_id")
+                else:
+                    source_ref = bid_id
+                    title = tender_data.get("title") or "Untitled Bid"
+                    customer = tender_data.get("customer")
+                    source_system = "Group"
+                    driver_user_id = None
+
+                print("=== CREATING BID ===", source_ref, source_kind)
+                snapshot = {
+                    "source_ref": source_ref,
+                    "source_kind": source_kind,
+                    "title": title,
+                    "customer": customer,
+                    "source_system": source_system,
+                    "driver_user_id": driver_user_id,
+                    "provisional": False,
+                }
+                bid, _ = await create_bid_from_snapshot(db, snapshot)
+                bid.enriching_id = bid_id
+                await db.commit()
+                print("=== BID CREATED ===", bid.id)
+            except Exception as create_e:
+                print("=== FAILED TO CREATE BID ===", create_e)
+                raise HTTPException(status_code=404, detail=f"Bid not found and could not be created: {str(create_e)}")
+        else:
+            raise
+
+    tender_data = await _fetch_tender_data(bid.enriching_id or bid.source_ref, bid.source_kind)
+
+    ai = get_ai_client()
+    metadata = await ai.extract_tender_metadata(tender_data)
+
+    bid.price_quality_ratio = metadata.get("price_quality_ratio")
+    bid.target_budget = metadata.get("target_budget")
+    bid.procurement_procedure = metadata.get("procurement_procedure")
+
+    # Save company description to company profile if customer is set
+    if bid.customer:
+        company_id = bid.customer
+        result = await db.execute(sa_select(CompanyProfile).where(CompanyProfile.company_id == company_id))
+        profile = result.scalars().first()
+        if not profile:
+            from datetime import datetime
+            profile = CompanyProfile(
+                company_id=company_id,
+                crawled_date=datetime.now(UTC).replace(tzinfo=None)
+            )
+            db.add(profile)
+        profile.company_description = metadata.get("company_description")
+
+    # Process key dates
+    import logging
+
+    from models.bid import KEYDATE_KINDS, KeyDate, RequiredDocument
+    logger = logging.getLogger("bids-api")
+
+    for kd in metadata.get("key_dates", []):
+        try:
+            from datetime import datetime
+            dt = datetime.fromisoformat(kd["date"].replace('Z', '+00:00'))
+            kind = kd.get("kind", "").lower()
+            if kind not in KEYDATE_KINDS:
+                kind = "submission" if "submission" in kind else "delivery" if "delivery" in kind else "start"
+            new_kd = KeyDate(
+                bid_id=bid.id,
+                kind=kind if kind in KEYDATE_KINDS else "submission",
+                date=dt
+            )
+            db.add(new_kd)
+        except Exception as e:
+            logger.warning(f"Failed to parse key date {kd}: {e}")
+
+    # Process required documents
+    for doc in metadata.get("required_documents", []):
+        try:
+            new_doc = RequiredDocument(
+                bid_id=bid.id,
+                document_name=doc.get("document_name", "Unknown Document"),
+                category=doc.get("category", "compliance"),
+                is_mandatory=doc.get("is_mandatory", True),
+                status="open"
+            )
+            db.add(new_doc)
+        except Exception as e:
+            logger.warning(f"Failed to parse required document {doc}: {e}")
+
+    bid.version += 1
+    activity.record(
+        db,
+        bid.id,
+        _actor(request),
+        "bid.metadata_extracted",
+        metadata,
     )
     await db.commit()
     await db.refresh(bid)

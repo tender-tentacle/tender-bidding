@@ -11,6 +11,8 @@ os.environ.setdefault("SQLITE_DATA_DIR", tempfile.mkdtemp(prefix="bidding-test-"
 os.environ.setdefault("BIDDING_MOCK", "1")
 
 import models.bid  # noqa: F401 — register mappers
+import models.buyer_cache  # noqa: F401
+import models.company_reputation  # noqa: F401
 import pytest_asyncio
 from core.database import Base, engine
 from services.portal_guide import seed_portal_guides

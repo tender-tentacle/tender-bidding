@@ -38,7 +38,7 @@ COLLABORATOR_ROLES = ("lead", "contributor", "reviewer")
 DOCUMENT_KINDS = ("tender", "reference", "profile", "certificate", "declaration", "supporting")
 # Sensitivity governs access/retention. "special" = GDPR special-category (court docs, CVs).
 SENSITIVITIES = ("normal", "personal", "special")
-KEYDATE_KINDS = ("submission", "questions", "validity", "registration", "application")
+KEYDATE_KINDS = ("submission", "questions", "validity", "registration", "application", "delivery", "start")
 
 
 class Bid(Base):
@@ -77,6 +77,11 @@ class Bid(Base):
     status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
     loss_reason: Mapped[str | None] = mapped_column(String(50))
     loss_note: Mapped[str | None] = mapped_column(Text)
+
+    # Extracted Metadata
+    price_quality_ratio: Mapped[str | None] = mapped_column(String(255))
+    target_budget: Mapped[str | None] = mapped_column(String(255))
+    procurement_procedure: Mapped[str | None] = mapped_column(String(255))
 
     # Optimistic concurrency: writers send the version they read; mismatch → 409.
     version: Mapped[int] = mapped_column(Integer, default=1)
@@ -336,3 +341,88 @@ class PortalGuide(Base):
     submission_channel: Mapped[str | None] = mapped_column(String(255))
     signature_level: Mapped[str | None] = mapped_column(String(50))  # textform|FES|QES
     notes: Mapped[str | None] = mapped_column(Text)
+
+
+class CompanyMood(Base):
+    """Company mood extracted from Kununu."""
+
+    __tablename__ = "bid_company_mood"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(255), index=True)
+    comment_hash: Mapped[str] = mapped_column(String(64), index=True, unique=True)
+    title: Mapped[str | None] = mapped_column(String(1000))
+    content: Mapped[str | None] = mapped_column(Text)
+    rating: Mapped[float | None] = mapped_column(Integer)
+    published_date: Mapped[str | None] = mapped_column(String(255))
+    crawled_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class CompanyRegisterEntry(Base):
+    """Financial/Register entry extracted from Bundesanzeiger."""
+
+    __tablename__ = "bid_company_register_entry"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(255), index=True)
+    hash: Mapped[str] = mapped_column(String(64), index=True, unique=True)
+    title: Mapped[str | None] = mapped_column(String(1000))
+    link: Mapped[str | None] = mapped_column(String(1000))
+    content: Mapped[str | None] = mapped_column(Text)
+    category: Mapped[str | None] = mapped_column(String(255))
+    published_date: Mapped[str | None] = mapped_column(String(255))
+    crawled_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class CompanyJobEntry(Base):
+    """Open job positions extracted from BA Jobsuche."""
+
+    __tablename__ = "bid_company_job_entry"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(255), index=True)
+    hash: Mapped[str] = mapped_column(String(64), index=True, unique=True)
+    title: Mapped[str | None] = mapped_column(String(1000))
+    location: Mapped[str | None] = mapped_column(String(1000))
+    employment_type: Mapped[str | None] = mapped_column(String(255))
+    published_date: Mapped[str | None] = mapped_column(String(255))
+    crawled_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+class CompanyNewsEntry(Base):
+    """News entry extracted from Tagesschau."""
+
+    __tablename__ = "bid_company_news_entry"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(255), index=True)
+    hash: Mapped[str] = mapped_column(String(64), index=True, unique=True)
+    title: Mapped[str | None] = mapped_column(String(1000))
+    link: Mapped[str | None] = mapped_column(String(1000))
+    content: Mapped[str | None] = mapped_column(Text)
+    category: Mapped[str | None] = mapped_column(String(255))
+    published_date: Mapped[str | None] = mapped_column(String(255))
+    crawled_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+class CompanyHistoricTender(Base):
+    """Historic tenders for a company (cache for 30 days)."""
+
+    __tablename__ = "bid_company_historic_tender"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(255), index=True)
+    hash: Mapped[str] = mapped_column(String(64), index=True, unique=True)
+    title: Mapped[str | None] = mapped_column(String(1000))
+    link: Mapped[str | None] = mapped_column(String(1000))
+    content: Mapped[str | None] = mapped_column(Text)
+    published_date: Mapped[str | None] = mapped_column(String(255))
+    crawled_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class CompanyInsolvency(Base):
+    __tablename__ = "company_insolvency"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(255), index=True)
+    has_notices: Mapped[bool] = mapped_column(Boolean, default=False)
+    notices: Mapped[dict | None] = mapped_column(JSON)
+    crawled_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

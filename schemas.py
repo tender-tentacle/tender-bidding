@@ -237,6 +237,10 @@ class BidDetail(BidSummary):
     matched_horizontals: list[dict | str] = []
     classification_matches: list[dict] = []
 
+    price_quality_ratio: str | None = None
+    target_budget: str | None = None
+    procurement_procedure: str | None = None
+
     loss_reason: str | None = None
     loss_note: str | None = None
     collaborators: list[CollaboratorOut] = []

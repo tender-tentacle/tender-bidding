@@ -17,6 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 DEFAULT_PROMPTS: dict[str, str] = {
     "bidding_required_documents": REQUIRED_DOCUMENTS_PROMPT,
     "bidding_deadlines": DEADLINES_PROMPT,
+    "bidding_historical_evidence": "Du bist ein Research-Agent. Bitte recherchiere oder schätze als 'on the fly crawler' historische Tender-Daten für den Kunden '{buyer_name}'. Extrahiere oder leite fundierte Annahmen für die Felder 'award_median', 'accepted_rate_corridor' und 'budget_amendment_rate' ab. Gib die Antwort zwingend auf Deutsch im JSON-Format zurück, mit exakt diesen drei Feldern.",
+    "bidding_strategy": "Du bist ein Bid Manager, der die 'Preisgestaltung (Pricing Quality)' für eine neue Ausschreibung von {buyer_name} bewertet (Wert: {current_value}, Verhältnis Preis/Qualität: {current_ratio}). Vergleiche dies mit der historischen Baseline des Kunden: {historical_pricing_payload}. Gib eine strategische Empfehlung ab, wie unser kommerzielles Angebot strukturiert werden sollte, welche Tagessätze wir anpeilen sollten und ob Risikopuffer eingeplant werden müssen. Antworte zwingend auf Deutsch in allen JSON-Feldern (strategy, strengths, warnings).",
+    "bidding_financial_summary": "Du bist ein Analyst für finanzielle Stabilität. Analysiere die extrahierten Finanzdaten des Unternehmens '{company_name}': {financial_data}. Erstelle eine Zusammenfassung der finanziellen Stabilität und langfristigen Lebensfähigkeit. Antworte auf Deutsch und gib ein JSON zurück mit dem Feld 'summary'.",
+    "bidding_hiring_summary": "Du bist ein HR-Analyst. Analysiere die extrahierten offenen Stellenangebote des Unternehmens '{company_name}': {jobs_data}. Fasse die aktuellen Einstellungstrends, gesuchten Profile und den mutmaßlichen strategischen Fokus zusammen. Antworte auf Deutsch und gib ein JSON zurück mit dem Feld 'summary'.",
+    "bidding_buyer_reputation": "Du bist ein Experte für Employer Branding. Analysiere die Kununu-Bewertungen und Stimmungsdaten des Unternehmens '{company_name}': {mood_data}. Fasse die Reputation und Stimmung der Mitarbeiter zusammen. Antworte auf Deutsch und gib ein JSON zurück mit dem Feld 'summary'.",
+    "bidding_mhp_reputation": "Du bist ein Strategieberater bei MHP. Erstelle eine strategische Zusammenfassung unserer (MHP's) Reputation und Markendurchdringung im speziellen Geschäftsumfeld des Kunden '{company_name}' basierend auf unseren historischen Erfolgen und generellem Profil. Antworte auf Deutsch und gib ein JSON zurück mit dem Feld 'summary'.",
 }
 
 

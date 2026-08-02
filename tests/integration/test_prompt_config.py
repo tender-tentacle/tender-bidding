@@ -2,6 +2,7 @@
 defaults until edited, versioned with history."""
 
 import pytest
+from services.prompt_config import DEFAULT_PROMPTS
 from tests.helpers import api_client
 
 EXPERT = {"X-User-Role": "admin", "X-User-ID": "head-ps"}
@@ -11,7 +12,7 @@ EXPERT = {"X-User-Role": "admin", "X-User-ID": "head-ps"}
 async def test_defaults_are_served_until_edited():
     async with api_client() as client:
         all_cfg = (await client.get("/config")).json()
-        assert set(all_cfg) == {"bidding_deadlines", "bidding_required_documents"}
+        assert set(all_cfg) == set(DEFAULT_PROMPTS.keys())
         assert all(c["is_default"] and c["version"] == 0 for c in all_cfg.values())
         assert (
             "Handelsregister" in all_cfg["bidding_required_documents"]["prompt_template"]

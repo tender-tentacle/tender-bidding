@@ -1,6 +1,9 @@
 import os
 from contextlib import asynccontextmanager
 
+import models.bid  # noqa: F401
+import models.buyer_cache  # noqa: F401
+import models.company_reputation  # noqa: F401
 from core.config import ALLOWED_ORIGINS, MOCK_MODE
 from core.database import engine, init_db
 from core.logger import setup_logger
@@ -56,6 +59,13 @@ from api.v1 import (  # noqa: E402
     bids,
     checklist,
     comments,
+    company_financials,
+    company_insolvency,
+    company_jobs,
+    company_mood,
+    company_news,
+    company_profile,
+    company_reputation,
     config,
     documents,
     internal,
@@ -69,8 +79,15 @@ for r in (
     internal.router,
     bids.router,
     checklist.router,
-    documents.router,
     comments.router,
+    company_mood.router,
+    company_financials.router,
+    company_jobs.router,
+    company_profile.router,
+    company_insolvency.router,
+    company_news.router,
+    company_reputation.router,
+    documents.router,
     library.router,
     matrix.router,
     config.router,
@@ -107,4 +124,4 @@ else:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8014)))
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8014)))  # noqa: S104
