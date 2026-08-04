@@ -100,7 +100,16 @@ async def get_bid_by_source(source_ref: str, db: Annotated[AsyncSession, Depends
     deployed at all).
     """
     bid = (
-        await db.execute(select(Bid).where((Bid.source_ref == source_ref) | (Bid.enriching_id == source_ref)))
+        await db.execute(
+            select(Bid)
+            .options(
+                selectinload(Bid.collaborators),
+                selectinload(Bid.documents),
+                selectinload(Bid.required_documents),
+                selectinload(Bid.key_dates),
+            )
+            .where((Bid.source_ref == source_ref) | (Bid.enriching_id == source_ref))
+        )
     ).scalar_one_or_none()
 
     if not bid:
@@ -564,7 +573,9 @@ async def enrich_bid_requirements(
         {"documents": len(docs_payload), "deadlines": len(deadlines_payload)},
     )
     await db.commit()
-    await db.refresh(bid)
+    bid = await get_by_source_ref(db, source_ref)
+    if not bid:
+        raise HTTPException(status_code=404, detail="Bid workspace not found after commit")
 
     return _detail(bid)
 

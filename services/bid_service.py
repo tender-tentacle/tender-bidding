@@ -13,6 +13,8 @@ from services import activity
 from services.checklist_service import build_checklist, build_key_dates
 from services.portal_guide import portal_key_for
 
+from sqlalchemy.orm import selectinload
+
 logger = setup_logger("bidding-service")
 
 
@@ -24,7 +26,19 @@ def snapshot_dict(payload) -> dict[str, Any]:
 
 
 async def get_by_source_ref(db: AsyncSession, source_ref: str) -> Bid | None:
-    return (await db.execute(select(Bid).where(Bid.source_ref == source_ref))).scalar_one_or_none()
+    return (
+        await db.execute(
+            select(Bid)
+            .options(
+                selectinload(Bid.collaborators),
+                selectinload(Bid.documents),
+                selectinload(Bid.required_documents),
+                selectinload(Bid.key_dates),
+            )
+            .where(Bid.source_ref == source_ref)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
 
 
 async def create_bid_from_snapshot(db: AsyncSession, payload) -> tuple[Bid, bool]:

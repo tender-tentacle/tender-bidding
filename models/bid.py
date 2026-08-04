@@ -13,7 +13,7 @@ import uuid
 from datetime import UTC, datetime
 
 from core.database import Base
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
@@ -353,9 +353,23 @@ class CompanyMood(Base):
     comment_hash: Mapped[str] = mapped_column(String(64), index=True, unique=True)
     title: Mapped[str | None] = mapped_column(String(1000))
     content: Mapped[str | None] = mapped_column(Text)
-    rating: Mapped[float | None] = mapped_column(Integer)
+    rating: Mapped[float | None] = mapped_column(Float)
     published_date: Mapped[str | None] = mapped_column(String(255))
     crawled_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    # Overview Metadata fields
+    overall_score: Mapped[float | None] = mapped_column(Float)
+    score_career: Mapped[float | None] = mapped_column(Float)
+    score_culture: Mapped[float | None] = mapped_column(Float)
+    score_environment: Mapped[float | None] = mapped_column(Float)
+    score_diversity: Mapped[float | None] = mapped_column(Float)
+    review_count: Mapped[int | None] = mapped_column(Integer)
+    summary_text: Mapped[str | None] = mapped_column(Text)
+    industry_score: Mapped[float | None] = mapped_column(Float)
+    discovered_url: Mapped[str | None] = mapped_column(String(1000))
+    culture_compass: Mapped[str | None] = mapped_column(Text)
+    culture_dimensions: Mapped[dict | None] = mapped_column(JSON)
+    source_platform: Mapped[str | None] = mapped_column(String(50), default="kununu")
 
 
 class CompanyRegisterEntry(Base):
@@ -375,7 +389,7 @@ class CompanyRegisterEntry(Base):
 
 
 class CompanyJobEntry(Base):
-    """Open job positions extracted from BA Jobsuche."""
+    """Open job positions extracted from BA Jobsuche / Kununu."""
 
     __tablename__ = "bid_company_job_entry"
 
@@ -387,6 +401,7 @@ class CompanyJobEntry(Base):
     employment_type: Mapped[str | None] = mapped_column(String(255))
     published_date: Mapped[str | None] = mapped_column(String(255))
     crawled_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    source_url: Mapped[str | None] = mapped_column(String(1000))
 
 class CompanyNewsEntry(Base):
     """News entry extracted from Tagesschau."""

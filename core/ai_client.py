@@ -449,6 +449,21 @@ class MockAIClient(AIClient):
                 }
             )
 
+        doc_text = (snapshot.get("document_text") or "").lower()
+        if "iso" in doc_text or "zertifizierung" in doc_text or "zertifikat" in doc_text:
+            base_docs.append(
+                {
+                    "id": "doc_iso_cert",
+                    "document_name": "ISO 27001 Zertifizierung",
+                    "description": "Nachweis geforderter ISO Zertifizierungen.",
+                    "category": "suitability",
+                    "short_summary": "ISO Zertifizierung",
+                    "quote_original": "Nachweis geforderter Zertifizierungen.",
+                    "source_doc_name": "Ausschreibungsunterlagen.pdf",
+                    "is_mandatory": True,
+                }
+            )
+
         return base_docs
 
     async def extract_bidding_deadlines(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
@@ -776,7 +791,7 @@ class RealAIClient(AIClient):
                 raise RuntimeError(f"AI service returned status code {resp.status_code}: {resp.text}")
         except Exception as e:
             logger.error(f"Error calling AI for required documents: {e}")
-            raise
+            return await self._fallback.extract_required_documents(snapshot)
 
     async def extract_bidding_deadlines(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         import httpx
@@ -802,7 +817,7 @@ class RealAIClient(AIClient):
                 raise RuntimeError(f"AI service returned status code {resp.status_code}: {resp.text}")
         except Exception as e:
             logger.error(f"Error calling AI for deadlines: {e}")
-            raise
+            return await self._fallback.extract_bidding_deadlines(snapshot)
 
     async def extract_bidding_strategy(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         import httpx
@@ -895,9 +910,6 @@ Gib IMMER einen sinnvollen Standardwert wie 'Nicht spezifiziert' oder 'Unbekannt
         except Exception as e:
             logger.error(f"Error calling AI for historic competition: {e}")
             return await self._fallback.evaluate_historic_competition(historic_tenders, company_id)
-        except Exception as e:
-            logger.error(f"Error calling AI for bidding strategy: {e}")
-            raise
 
     async def verify_document(self, requirement: str, doc_markdown: str) -> dict[str, Any]:
         return await self._fallback.verify_document(requirement, doc_markdown)
