@@ -369,6 +369,11 @@ class CompanyMood(Base):
     discovered_url: Mapped[str | None] = mapped_column(String(1000))
     culture_compass: Mapped[str | None] = mapped_column(Text)
     culture_dimensions: Mapped[dict | None] = mapped_column(JSON)
+    salary_satisfaction_percentage: Mapped[float | None] = mapped_column(Float)
+    salary_satisfaction_text: Mapped[str | None] = mapped_column(Text)
+    salary_satisfaction_review_count: Mapped[int | None] = mapped_column(Integer)
+    salary_benefits_score: Mapped[float | None] = mapped_column(Float)
+    salary_benefits_review_count: Mapped[int | None] = mapped_column(Integer)
     source_platform: Mapped[str | None] = mapped_column(String(50), default="kununu")
 
 
@@ -400,8 +405,11 @@ class CompanyJobEntry(Base):
     location: Mapped[str | None] = mapped_column(String(1000))
     employment_type: Mapped[str | None] = mapped_column(String(255))
     published_date: Mapped[str | None] = mapped_column(String(255))
+    url: Mapped[str | None] = mapped_column(String(1000))
+    salary_range: Mapped[str | None] = mapped_column(String(255))
     crawled_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     source_url: Mapped[str | None] = mapped_column(String(1000))
+
 
 class CompanyNewsEntry(Base):
     """News entry extracted from Tagesschau."""
@@ -417,6 +425,7 @@ class CompanyNewsEntry(Base):
     category: Mapped[str | None] = mapped_column(String(255))
     published_date: Mapped[str | None] = mapped_column(String(255))
     crawled_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
 
 class CompanyHistoricTender(Base):
     """Historic tenders for a company (cache for 30 days)."""
@@ -441,3 +450,50 @@ class CompanyInsolvency(Base):
     has_notices: Mapped[bool] = mapped_column(Boolean, default=False)
     notices: Mapped[dict | None] = mapped_column(JSON)
     crawled_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class CompanySalaryEntry(Base):
+    """Salary entry extracted from Kununu / Gehalt."""
+
+    __tablename__ = "bid_company_salary_entry"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(255), index=True)
+    hash: Mapped[str] = mapped_column(String(64), index=True, unique=True)
+    job_title: Mapped[str] = mapped_column(String(255))
+    sample_count: Mapped[int] = mapped_column(Integer, default=1)
+    avg_salary: Mapped[float] = mapped_column(Float)
+    currency: Mapped[str | None] = mapped_column(String(10), default="EUR")
+    crawled_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class CompanyNorthData(Base):
+    """North Data company master data entry."""
+
+    __tablename__ = "bid_company_northdata"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(255), index=True, unique=True)
+    company_name: Mapped[str | None] = mapped_column(String(1000))
+    address: Mapped[str | None] = mapped_column(String(1000))
+    founding_date: Mapped[str | None] = mapped_column(String(255))
+    register_court: Mapped[str | None] = mapped_column(String(255))
+    register_number: Mapped[str | None] = mapped_column(String(255))
+    euid: Mapped[str | None] = mapped_column(String(255))
+    lei_code: Mapped[str | None] = mapped_column(String(255))
+    business_purpose: Mapped[str | None] = mapped_column(Text)
+    former_names: Mapped[dict | list | None] = mapped_column(JSON)
+    other_registers: Mapped[dict | list | None] = mapped_column(JSON)
+    officers: Mapped[dict | list | None] = mapped_column(JSON)
+    events: Mapped[dict | list | None] = mapped_column(JSON)
+    balance_sheet: Mapped[dict | None] = mapped_column(JSON)
+    financials: Mapped[dict | list | None] = mapped_column(JSON)
+    ownership: Mapped[dict | list | None] = mapped_column(JSON)
+    source_url: Mapped[str | None] = mapped_column(String(1000))
+    crawled_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+
+
+
+
