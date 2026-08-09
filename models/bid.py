@@ -44,7 +44,7 @@ KEYDATE_KINDS = ("submission", "questions", "validity", "registration", "applica
 class Bid(Base):
     __tablename__ = "bid"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     # Source in the enriching domain (tender external_id or group id) — idempotency key.
     source_ref: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     source_kind: Mapped[str] = mapped_column(String(20), default="tender")  # tender | group
@@ -111,7 +111,7 @@ class Bid(Base):
 class BidCollaborator(Base):
     __tablename__ = "bid_collaborator"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     bid_id: Mapped[str] = mapped_column(ForeignKey("bid.id"), index=True)
     user_id: Mapped[str] = mapped_column(String(255), index=True)
     role: Mapped[str] = mapped_column(String(20), default="contributor")
@@ -123,7 +123,7 @@ class BidCollaborator(Base):
 class ChecklistItem(Base):
     __tablename__ = "bid_checklist_item"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     bid_id: Mapped[str] = mapped_column(ForeignKey("bid.id"), index=True)
     criterion_kind: Mapped[str] = mapped_column(String(20), index=True)  # formal|suitability|award
     requirement_type: Mapped[str] = mapped_column(String(50))  # reference|profile|signature|...
@@ -144,7 +144,7 @@ class ChecklistItem(Base):
 class BidDocument(Base):
     __tablename__ = "bid_document"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     bid_id: Mapped[str] = mapped_column(ForeignKey("bid.id"), index=True)
     checklist_item_id: Mapped[str | None] = mapped_column(ForeignKey("bid_checklist_item.id"), index=True)
     kind: Mapped[str] = mapped_column(String(20), default="supporting")  # tender|reference|profile|supporting
@@ -163,7 +163,7 @@ class BidDocument(Base):
 class KeyDate(Base):
     __tablename__ = "bid_key_date"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     bid_id: Mapped[str] = mapped_column(ForeignKey("bid.id"), index=True)
     kind: Mapped[str] = mapped_column(String(20))  # submission|questions|validity
     date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -176,7 +176,7 @@ class KeyDate(Base):
 class RequiredDocument(Base):
     __tablename__ = "bid_required_document"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     bid_id: Mapped[str] = mapped_column(ForeignKey("bid.id"), index=True)
     document_name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
@@ -201,10 +201,10 @@ class RequiredDocument(Base):
 class Comment(Base):
     __tablename__ = "bid_comment"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     bid_id: Mapped[str] = mapped_column(ForeignKey("bid.id"), index=True)
     target_type: Mapped[str] = mapped_column(String(20), default="bid")  # bid|checklist_item|document
-    target_id: Mapped[str | None] = mapped_column(String(32), index=True)
+    target_id: Mapped[str | None] = mapped_column(String(128), index=True)
     author_user_id: Mapped[str | None] = mapped_column(String(255))
     body: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
@@ -215,7 +215,7 @@ class BidActivity(Base):
 
     __tablename__ = "bid_activity"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     bid_id: Mapped[str] = mapped_column(ForeignKey("bid.id"), index=True)
     actor_user_id: Mapped[str | None] = mapped_column(String(255))
     action: Mapped[str] = mapped_column(String(100))
@@ -233,7 +233,7 @@ class DecisionMatrix(Base):
 
     __tablename__ = "bid_decision_matrix"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(255))
     source_filename: Mapped[str | None] = mapped_column(String(500))
     uploaded_by: Mapped[str | None] = mapped_column(String(255))
@@ -260,7 +260,7 @@ class DecisionCategory(Base):
 
     __tablename__ = "bid_decision_category"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     matrix_id: Mapped[str] = mapped_column(ForeignKey("bid_decision_matrix.id"), index=True)
     headline: Mapped[str] = mapped_column(String(255))
     explanation: Mapped[str | None] = mapped_column(Text)
@@ -289,7 +289,7 @@ class PromptConfig(Base):
 class PromptConfigHistory(Base):
     __tablename__ = "bid_prompt_config_history"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     category: Mapped[str] = mapped_column(String(100), index=True)
     version: Mapped[int] = mapped_column(Integer)
     prompt_template: Mapped[str] = mapped_column(Text)
@@ -303,7 +303,7 @@ class DecisionMatrixHistory(Base):
 
     __tablename__ = "bid_decision_matrix_history"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     matrix_id: Mapped[str] = mapped_column(ForeignKey("bid_decision_matrix.id"), index=True)
     version: Mapped[int] = mapped_column(Integer)
     change_summary: Mapped[str | None] = mapped_column(String(500))
@@ -321,7 +321,7 @@ class BidCategoryRating(Base):
 
     __tablename__ = "bid_category_rating"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     bid_id: Mapped[str] = mapped_column(ForeignKey("bid.id"), index=True)
     category_id: Mapped[str] = mapped_column(ForeignKey("bid_decision_category.id"), index=True)
     ai_score: Mapped[int | None] = mapped_column(Integer)  # 0–5
@@ -352,7 +352,7 @@ class CompanyMood(Base):
 
     __tablename__ = "bid_company_mood"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     company_id: Mapped[str] = mapped_column(String(255), index=True)
     comment_hash: Mapped[str] = mapped_column(String(64), index=True, unique=True)
     title: Mapped[str | None] = mapped_column(String(1000))
@@ -386,7 +386,7 @@ class CompanyRegisterEntry(Base):
 
     __tablename__ = "bid_company_register_entry"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     company_id: Mapped[str] = mapped_column(String(255), index=True)
     hash: Mapped[str] = mapped_column(String(64), index=True, unique=True)
     title: Mapped[str | None] = mapped_column(String(1000))
@@ -402,7 +402,7 @@ class CompanyJobEntry(Base):
 
     __tablename__ = "bid_company_job_entry"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     company_id: Mapped[str] = mapped_column(String(255), index=True)
     hash: Mapped[str] = mapped_column(String(64), index=True, unique=True)
     title: Mapped[str | None] = mapped_column(String(1000))
@@ -421,7 +421,7 @@ class CompanyNewsEntry(Base):
 
     __tablename__ = "bid_company_news_entry"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     company_id: Mapped[str] = mapped_column(String(255), index=True)
     hash: Mapped[str] = mapped_column(String(64), index=True, unique=True)
     title: Mapped[str | None] = mapped_column(String(1000))
@@ -437,7 +437,7 @@ class CompanyHistoricTender(Base):
 
     __tablename__ = "bid_company_historic_tender"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     company_id: Mapped[str] = mapped_column(String(255), index=True)
     hash: Mapped[str] = mapped_column(String(64), index=True, unique=True)
     title: Mapped[str | None] = mapped_column(String(1000))
@@ -450,7 +450,7 @@ class CompanyHistoricTender(Base):
 class CompanyInsolvency(Base):
     __tablename__ = "company_insolvency"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     company_id: Mapped[str] = mapped_column(String(255), index=True)
     has_notices: Mapped[bool] = mapped_column(Boolean, default=False)
     notices: Mapped[dict | None] = mapped_column(JSON)
@@ -462,7 +462,7 @@ class CompanySalaryEntry(Base):
 
     __tablename__ = "bid_company_salary_entry"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     company_id: Mapped[str] = mapped_column(String(255), index=True)
     hash: Mapped[str] = mapped_column(String(64), index=True, unique=True)
     job_title: Mapped[str] = mapped_column(String(255))
@@ -477,7 +477,7 @@ class CompanyNorthData(Base):
 
     __tablename__ = "bid_company_northdata"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
     company_id: Mapped[str] = mapped_column(String(255), index=True, unique=True)
     company_name: Mapped[str | None] = mapped_column(String(1000))
     address: Mapped[str | None] = mapped_column(String(1000))

@@ -51,3 +51,23 @@ async def test_company_summary_contract(mocker):
         assert r_extract.status_code == 200
         data = r_extract.json()
         assert set(data.keys()) >= COMPANY_SUMMARY_FIELDS
+
+
+@pytest.mark.asyncio
+async def test_company_summary_contract_uuid36_format():
+    """Verify Pact contract compliance when extracting company summary using standard 36-character UUIDs."""
+    async with api_client() as client:
+        uuid_36 = "ed875469-2973-4029-ad66-46cb1776f58c"
+        r_extract = await client.post(
+            f"/bids/{uuid_36}/company-summary/extract",
+            json={"company_name": "Flughafen Stuttgart GmbH", "is_aor": True}
+        )
+        assert r_extract.status_code == 200
+        data = r_extract.json()
+        assert set(data.keys()) >= COMPANY_SUMMARY_FIELDS
+        assert data["bid_id"] == uuid_36
+
+        r_get = await client.get(f"/bids/{uuid_36}/company-summary")
+        assert r_get.status_code == 200
+        assert r_get.json()["bid_id"] == uuid_36
+

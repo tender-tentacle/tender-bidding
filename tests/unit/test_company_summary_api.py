@@ -34,3 +34,22 @@ async def test_company_summary_persistence():
         res_get = await client.get(f"/bids/{bid_id}/company-summary")
         assert res_get.status_code == 200
         assert res_get.json()["short_summary"] == summary_extracted["short_summary"]
+
+
+@pytest.mark.asyncio
+async def test_company_summary_formatted_uuid_36_chars():
+    """Verify that a 36-character UUID string (e.g. ed875469-2973-4029-ad66-46cb1776f58c) creates a Bid and extracts summary without 500 error."""
+    async with api_client() as client:
+        uuid_36 = "ed875469-2973-4029-ad66-46cb1776f58c"
+        res_extract = await client.post(
+            f"/bids/{uuid_36}/company-summary/extract",
+            json={"company_name": "Flughafen Stuttgart GmbH"}
+        )
+        assert res_extract.status_code == 200
+        summary_extracted = res_extract.json()
+        assert summary_extracted["bid_id"] == uuid_36
+
+        res_get = await client.get(f"/bids/{uuid_36}/company-summary")
+        assert res_get.status_code == 200
+        assert res_get.json()["bid_id"] == uuid_36
+
