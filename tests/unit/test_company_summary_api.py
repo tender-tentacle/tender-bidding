@@ -1,0 +1,36 @@
+"""Unit test for Company Data Summary backend logic & fallback handling in tender-bidding."""
+
+import pytest
+from tests.helpers import api_client
+
+
+@pytest.mark.asyncio
+async def test_company_summary_aor_fallback():
+    """Verify that when North Data is absent (e.g. AÖR entity), red flags and solvency fallback are generated."""
+    async with api_client() as client:
+        # Request extraction for an AÖR institution with no North Data
+        res = await client.post(
+            "/bids/test-aor-bid/company-summary/extract",
+            json={"company_name": "Landesbetrieb Liegenschafts- und Baubetreuung", "is_aor": True}
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert any("AÖR" in flag or "Public Law Institution" in flag for flag in data["red_flag_banners"])
+        assert data["financial_solvency_badges"]["solvency_status"] == "AÖR Public Entity (No Commercial Register)"
+
+
+@pytest.mark.asyncio
+async def test_company_summary_persistence():
+    """Verify saving and loading company summary to DB."""
+    async with api_client() as client:
+        bid_id = "bid-persistence-001"
+        res_extract = await client.post(
+            f"/bids/{bid_id}/company-summary/extract",
+            json={"company_name": "Flughafen Stuttgart GmbH"}
+        )
+        assert res_extract.status_code == 200
+        summary_extracted = res_extract.json()
+
+        res_get = await client.get(f"/bids/{bid_id}/company-summary")
+        assert res_get.status_code == 200
+        assert res_get.json()["short_summary"] == summary_extracted["short_summary"]

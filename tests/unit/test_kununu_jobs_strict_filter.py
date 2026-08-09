@@ -1,10 +1,12 @@
-import pytest
 from datetime import UTC, datetime
-from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import async_sessionmaker
-from models.bid import CompanyJobEntry
-from main import app
+
+import pytest
 from core.database import engine
+from httpx import ASGITransport, AsyncClient
+from main import app
+from models.bid import CompanyJobEntry
+from sqlalchemy.ext.asyncio import async_sessionmaker
+
 
 @pytest.mark.asyncio
 async def test_get_company_jobs_strict_kununu_filtering():

@@ -83,6 +83,10 @@ class Bid(Base):
     target_budget: Mapped[str | None] = mapped_column(String(255))
     procurement_procedure: Mapped[str | None] = mapped_column(String(255))
 
+    # Company Data Summary & Intelligence One Pager
+    company_summary: Mapped[dict | None] = mapped_column(JSON, default=dict)
+    company_summary_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     # Optimistic concurrency: writers send the version they read; mismatch → 409.
     version: Mapped[int] = mapped_column(Integer, default=1)
 
