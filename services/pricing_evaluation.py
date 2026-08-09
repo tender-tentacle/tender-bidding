@@ -40,8 +40,8 @@ async def evaluate_pricing_strategy(db: AsyncSession, bid: Bid) -> dict[str, Any
     # 2. Gather context
     snapshot = {
         "buyer_name": buyer_name_clean,
-        "current_value": f"€{bid.total_value:,}" if hasattr(bid, 'total_value') and bid.total_value else "Unknown",
-        "current_ratio": "Unknown", # The actual tender data will be rendered by the frontend directly for the Current Tender block
+        "current_value": f"€{bid.total_value:,}" if hasattr(bid, "total_value") and bid.total_value else "Unknown",
+        "current_ratio": "Unknown",  # The actual tender data will be rendered by the frontend directly for the Current Tender block
     }
 
     # 3. Call AI to extract historical evidence (crawler)
@@ -61,9 +61,7 @@ async def evaluate_pricing_strategy(db: AsyncSession, bid: Bid) -> dict[str, Any
         cache_record.created_at = now.replace(tzinfo=None)
     else:
         new_record = BuyerIntelligenceCacheORM(
-            customer_id=buyer_name_clean,
-            intelligence_payload=json.dumps(result),
-            created_at=now.replace(tzinfo=None)
+            customer_id=buyer_name_clean, intelligence_payload=json.dumps(result), created_at=now.replace(tzinfo=None)
         )
         db.add(new_record)
 

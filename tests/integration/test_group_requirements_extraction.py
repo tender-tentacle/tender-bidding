@@ -7,7 +7,7 @@ from tests.helpers import api_client
 async def test_enrich_group_requirements_resilient_to_raw_errors(mocker):
     """Verify group requirements extraction succeeds even if member raw text endpoint fails or member is missing raw text."""
     group_id = "b519ded5-c9a8-4980-8ee6-a201f58dd187"
-    
+
     mock_group_response = {
         "id": group_id,
         "title": "Rahmenvereinbarung Projektplattform",
@@ -17,15 +17,10 @@ async def test_enrich_group_requirements_resilient_to_raw_errors(mocker):
                 "id": "member-1",
                 "title": "Lot 1 Platform",
                 "description": "Cloud base platform",
-                "attachments": [{"title": "Notice.pdf", "url": "https://example.com/notice.pdf"}]
+                "attachments": [{"title": "Notice.pdf", "url": "https://example.com/notice.pdf"}],
             },
-            {
-                "id": "member-2",
-                "title": "Lot 2 Support",
-                "description": "24/7 Operations",
-                "attachments": None
-            }
-        ]
+            {"id": "member-2", "title": "Lot 2 Support", "description": "24/7 Operations", "attachments": None},
+        ],
     }
 
     original_get = httpx.AsyncClient.get
@@ -43,10 +38,7 @@ async def test_enrich_group_requirements_resilient_to_raw_errors(mocker):
     mocker.patch("httpx.AsyncClient.get", mock_get)
 
     async with api_client() as client:
-        resp = await client.post(
-            "/bids/enrich",
-            json={"source_id": group_id, "source_kind": "group"}
-        )
+        resp = await client.post("/bids/enrich", json={"source_id": group_id, "source_kind": "group"})
         assert resp.status_code == 200, f"Expected 200 OK, got {resp.status_code}: {resp.text}"
         data = resp.json()
         assert data["source_ref"] == group_id

@@ -8,12 +8,11 @@ from core.logger import setup_logger
 from models.bid import Bid, BidCollaborator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from services import activity
 from services.checklist_service import build_checklist, build_key_dates
 from services.portal_guide import portal_key_for
-
-from sqlalchemy.orm import selectinload
 
 logger = setup_logger("bidding-service")
 

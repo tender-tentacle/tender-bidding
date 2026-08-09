@@ -5,11 +5,7 @@ from models.bid import Bid, KeyDate, RequiredDocument
 def test_bid_orm_validation_happy_path():
     """Happy path: Bid instantiation with valid attributes."""
     b = Bid(
-        source_ref="ext-12345",
-        source_kind="tender",
-        title="Test Tender Bid",
-        customer="City of Berlin",
-        status="draft"
+        source_ref="ext-12345", source_kind="tender", title="Test Tender Bid", customer="City of Berlin", status="draft"
     )
     assert b.source_ref == "ext-12345"
     assert b.source_kind == "tender"

@@ -31,8 +31,7 @@ def register_orm_validation_listeners(base_cls: type) -> None:
                 # 1. Non-null Pre-condition Check
                 if value is None and not is_nullable and not is_pk and not has_default:
                     err_msg = (
-                        f"Validation Error in {target_cls_name}.{attr_name}: "
-                        f"Field is non-nullable but was set to None."
+                        f"Validation Error in {target_cls_name}.{attr_name}: Field is non-nullable but was set to None."
                     )
                     logger.error(err_msg)
                     raise ValueError(err_msg)

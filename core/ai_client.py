@@ -515,14 +515,14 @@ class MockAIClient(AIClient):
         return {
             "strategy": "Dies ist eine Mock-Empfehlung. Fokussiere auf Qualität bei diesem Kunden.",
             "strengths": ["Gute historische Liefertreue", "Bekannter Technologie-Stack"],
-            "warnings": ["Budgetkürzungen wahrscheinlich", "Hoher Wettbewerb"]
+            "warnings": ["Budgetkürzungen wahrscheinlich", "Hoher Wettbewerb"],
         }
 
     async def extract_historical_evidence(self, buyer_name: str) -> dict[str, Any]:
         return {
             "award_median": "€3,800,000",
             "accepted_rate_corridor": "€120 - €145 / hr",
-            "budget_amendment_rate": "High (60% expanded)"
+            "budget_amendment_rate": "High (60% expanded)",
         }
 
     async def extract_tender_metadata(self, snapshot: dict[str, Any]) -> dict[str, Any]:
@@ -533,19 +533,19 @@ class MockAIClient(AIClient):
             "company_description": "Company described in tender documents as a leading service provider.",
             "key_dates": [
                 {"kind": "submission", "date": "2026-12-31T23:59:59Z"},
-                {"kind": "delivery", "date": "2027-01-15T00:00:00Z"}
+                {"kind": "delivery", "date": "2027-01-15T00:00:00Z"},
             ],
             "required_documents": [
                 {"document_name": "ISO 27001 Certificate", "category": "compliance", "is_mandatory": True},
                 {"document_name": "Sustainability Report 2025", "category": "esg", "is_mandatory": True},
-                {"document_name": "Trade Register Excerpt", "category": "legal", "is_mandatory": True}
-            ]
+                {"document_name": "Trade Register Excerpt", "category": "legal", "is_mandatory": True},
+            ],
         }
 
     async def evaluate_historic_competition(self, historic_tenders: list, company_id: str) -> dict[str, str]:
         return {
             "incumbent_advantage_summary": "Low incumbent advantage as multiple companies have won recently.",
-            "competitor_density_summary": "High density, average of 5 bidders per tender."
+            "competitor_density_summary": "High density, average of 5 bidders per tender.",
         }
 
     async def verify_document(self, requirement: str, doc_markdown: str) -> dict[str, Any]:
@@ -709,9 +709,7 @@ class RealAIClient(AIClient):
                     json={
                         "prompt_id": category,
                         "tender_data": data,
-                        "output_structure": {
-                            "summary": "str"
-                        },
+                        "output_structure": {"summary": "str"},
                     },
                 )
                 if resp.status_code == 200:
@@ -737,7 +735,7 @@ class RealAIClient(AIClient):
                         "output_structure": {
                             "award_median": "str",
                             "accepted_rate_corridor": "str",
-                            "budget_amendment_rate": "str"
+                            "budget_amendment_rate": "str",
                         },
                     },
                 )
@@ -830,11 +828,7 @@ class RealAIClient(AIClient):
                     json={
                         "prompt_id": "bidding_strategy",
                         "tender_data": snapshot,
-                        "output_structure": {
-                            "strategy": "str",
-                            "strengths": ["str"],
-                            "warnings": ["str"]
-                        },
+                        "output_structure": {"strategy": "str", "strengths": ["str"], "warnings": ["str"]},
                     },
                 )
                 if resp.status_code == 200:
@@ -848,6 +842,7 @@ class RealAIClient(AIClient):
 
     async def extract_tender_metadata(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         import httpx
+
         prompt = """
 Du bist ein Experte für öffentliche Ausschreibungen.
 Analysiere die bereitgestellten Ausschreibungsdaten (und Dokumente) und extrahiere die folgenden Informationen sehr gründlich:
@@ -872,8 +867,16 @@ Gib IMMER einen sinnvollen Standardwert wie 'Nicht spezifiziert' oder 'Unbekannt
                             "target_budget": "str",
                             "procurement_procedure": "str",
                             "company_description": "str",
-                            "key_dates": [{"kind": "str (submission, delivery, start, etc)", "date": "str (YYYY-MM-DDTHH:MM:SSZ)"}],
-                            "required_documents": [{"document_name": "str", "category": "str (legal, compliance, esg)", "is_mandatory": "bool"}]
+                            "key_dates": [
+                                {"kind": "str (submission, delivery, start, etc)", "date": "str (YYYY-MM-DDTHH:MM:SSZ)"}
+                            ],
+                            "required_documents": [
+                                {
+                                    "document_name": "str",
+                                    "category": "str (legal, compliance, esg)",
+                                    "is_mandatory": "bool",
+                                }
+                            ],
                         },
                     },
                 )
@@ -888,18 +891,19 @@ Gib IMMER einen sinnvollen Standardwert wie 'Nicht spezifiziert' oder 'Unbekannt
 
     async def evaluate_historic_competition(self, historic_tenders: list, company_id: str) -> dict[str, str]:
         import httpx
+
         try:
-            await _sync_prompt("bidding_historic_competition", "Beantworte aus den historischen Tenders: Incumbent advantage and density of competing bidders.")
+            await _sync_prompt(
+                "bidding_historic_competition",
+                "Beantworte aus den historischen Tenders: Incumbent advantage and density of competing bidders.",
+            )
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(
                     f"{AI_URL}/api/inference",
                     json={
                         "prompt_id": "bidding_historic_competition",
                         "tender_data": {"tenders": historic_tenders, "company_id": company_id},
-                        "output_structure": {
-                            "incumbent_advantage_summary": "str",
-                            "competitor_density_summary": "str"
-                        },
+                        "output_structure": {"incumbent_advantage_summary": "str", "competitor_density_summary": "str"},
                     },
                 )
                 if resp.status_code == 200:

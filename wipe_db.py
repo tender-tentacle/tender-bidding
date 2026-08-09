@@ -12,4 +12,5 @@ async def wipe():
         except Exception as e:
             print("Error dropping company_profiles:", e)
 
+
 asyncio.run(wipe())

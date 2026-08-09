@@ -18,7 +18,7 @@ async def test_enrich_bid_requirements_ai_fallback():
         "customer": "Charité - Universitätsmedizin Berlin",
         "external_id": "ext-charite-123",
         "source_system": "TED",
-        "attachments": []
+        "attachments": [],
     }
 
     mock_db = AsyncMock()
@@ -53,15 +53,16 @@ async def test_enrich_bid_requirements_ai_fallback():
         classification_matches=[],
     )
 
-    with patch("api.v1.bids._fetch_tender_data", AsyncMock(return_value=fake_tender_data)), \
-         patch("services.bid_service.get_by_source_ref", AsyncMock(return_value=mock_bid)), \
-         patch("core.ai_client.get_ai_client", return_value=mock_ai), \
-         patch("api.v1.bids._create_required_documents", return_value=None), \
-         patch("api.v1.bids._create_key_dates", return_value=None), \
-         patch("services.activity.record", return_value=None):
-
+    with (
+        patch("api.v1.bids._fetch_tender_data", AsyncMock(return_value=fake_tender_data)),
+        patch("services.bid_service.get_by_source_ref", AsyncMock(return_value=mock_bid)),
+        patch("core.ai_client.get_ai_client", return_value=mock_ai),
+        patch("api.v1.bids._create_required_documents", return_value=None),
+        patch("api.v1.bids._create_key_dates", return_value=None),
+        patch("services.activity.record", return_value=None),
+    ):
         payload = EnrichBiddingPayload(source_id="02ff5d0f-81a0-4dab-9a47-b67fd31d728a", source_kind="group")
         res = await enrich_bid_requirements(payload, mock_request, mock_db)
-        
+
         assert res.id == "bid-123"
         assert res.version == 2

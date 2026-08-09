@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
 class CompanyNewsEntrySchema(BaseModel):
     title: str | None
     link: str | None
@@ -23,6 +24,7 @@ class CompanyNewsEntrySchema(BaseModel):
 
     class Config:
         from_attributes = True
+
 
 @router.get("/company/{company_id:path}/news", response_model=list[CompanyNewsEntrySchema])
 async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
@@ -65,6 +67,7 @@ async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
                     if comp.get("id") == company_id or comp.get("name", "").lower() == company_id.lower():
                         company_name = comp.get("name", company_id)
                         pl = comp.get("portal_links") or {}
+
                         # Extract list arrays or string fallbacks
                         def _extract_url_list(val):
                             if not val:
@@ -75,7 +78,9 @@ async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
                                 return [val.strip()]
                             return []
 
-                        newsroom_list = _extract_url_list(pl.get("newsroom")) or _extract_url_list(pl.get("newsroom_url"))
+                        newsroom_list = _extract_url_list(pl.get("newsroom")) or _extract_url_list(
+                            pl.get("newsroom_url")
+                        )
                         blog_list = _extract_url_list(pl.get("blog")) or _extract_url_list(pl.get("blog_url"))
 
                         target_newsroom_urls.extend(newsroom_list)
@@ -86,31 +91,49 @@ async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
 
     scraped_articles = []
 
-    # Step 2: Crawl configured newsroom/blog URLs
-    if target_newsroom_urls:
+    # Step 2: Crawl DuckDuckGo News for target company/buyer
+    logger.info(f"Triggering DuckDuckGo News scraper for {company_name}")
+    try:
         async with httpx.AsyncClient(timeout=30.0) as client:
+            res = await client.post(f"{crawling_url}/api/v1/scrape/news", json={"query": company_name}, timeout=25.0)
+            if res.status_code == 200:
+                scraped_articles.extend(res.json())
+    except Exception as e:
+        logger.warning(f"Failed to fetch DuckDuckGo news for {company_name}: {e}")
+
+    # Step 3: Crawl custom or DDG-discovered newsroom/blog URLs
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        if target_newsroom_urls:
             for url in target_newsroom_urls:
                 try:
-                    logger.info(f"Crawling custom newsroom URL for {company_name}: {url}")
+                    logger.info(f"Crawling master-data newsroom URL for {company_name}: {url}")
                     res = await client.post(
                         f"{crawling_url}/api/v1/scrape/newsroom",
                         json={"url": url, "company_name": company_name},
-                        timeout=25.0
+                        timeout=25.0,
                     )
                     if res.status_code == 200:
                         scraped_articles.extend(res.json())
                 except Exception as e:
                     logger.warning(f"Failed to crawl newsroom URL {url}: {e}")
+        else:
+            try:
+                logger.info(f"Triggering DuckDuckGo newsroom discovery for {company_name}")
+                res = await client.post(
+                    f"{crawling_url}/api/v1/scrape/newsroom", json={"company_name": company_name}, timeout=25.0
+                )
+                if res.status_code == 200:
+                    scraped_articles.extend(res.json())
+            except Exception as e:
+                logger.warning(f"Failed to discover/crawl newsrooms for {company_name}: {e}")
 
-    # Step 3: Fallback to Tagesschau search if no custom newsroom articles found
+    # Step 4: Fallback to Tagesschau search if no articles found so far
     if not scraped_articles:
         logger.info(f"Fallback: Triggering Tagesschau scraper for {company_name}")
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 res = await client.post(
-                    f"{crawling_url}/api/v1/scrape/tagesschau",
-                    json={"query": company_name},
-                    timeout=25.0
+                    f"{crawling_url}/api/v1/scrape/tagesschau", json={"query": company_name}, timeout=25.0
                 )
                 if res.status_code == 200:
                     scraped_articles.extend(res.json())
@@ -121,22 +144,40 @@ async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
         logger.info(f"No news articles found for {company_id}")
         return news_entries
 
-    # Step 4: Clear old entries and save new ones
+    # Step 5: Deduplicate, filter to last 365 days, and sort by published date descending
+    cutoff_date = (datetime.now(UTC) - timedelta(days=365)).strftime("%Y-%m-%d")
+    seen_hashes = set()
+    filtered_articles = []
+
+    for item in scraped_articles:
+        article_hash = item.get("hash") or item.get("link")
+        if not article_hash or article_hash in seen_hashes:
+            continue
+        seen_hashes.add(article_hash)
+
+        pub_date = item.get("published_at") or item.get("published_date") or datetime.now(UTC).strftime("%Y-%m-%d")
+        if pub_date >= cutoff_date:
+            item["_pub_date"] = pub_date
+            filtered_articles.append(item)
+
+    filtered_articles.sort(key=lambda x: x.get("_pub_date", ""), reverse=True)
+
+    # Step 6: Clear old entries and save new ones
     try:
         for old_entry in news_entries:
             await db.delete(old_entry)
 
         new_entries = []
-        for item in scraped_articles:
+        for item in filtered_articles:
             entry = CompanyNewsEntry(
                 company_id=company_id,
                 hash=item.get("hash", ""),
                 title=item.get("title", ""),
                 link=item.get("link", ""),
                 content=item.get("content", ""),
-                category=item.get("category", "Newsroom"),
-                published_date=item.get("published_at", ""),
-                crawled_date=datetime.now(UTC).replace(tzinfo=None)
+                category=item.get("category", "DuckDuckGo News"),
+                published_date=item.get("_pub_date", ""),
+                crawled_date=datetime.now(UTC).replace(tzinfo=None),
             )
             db.add(entry)
             new_entries.append(entry)
@@ -150,4 +191,3 @@ async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error updating company news DB: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-

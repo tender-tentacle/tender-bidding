@@ -1,4 +1,5 @@
 """Integration test verifying tender-bidding queries artificial-intelligence-connector as primary search engine."""
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from main import app

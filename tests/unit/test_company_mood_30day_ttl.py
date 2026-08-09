@@ -1,7 +1,8 @@
-import pytest
-from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from models.bid import CompanyMood
+
 
 @pytest.mark.asyncio
 async def test_company_mood_30day_ttl_override_behavior():
@@ -34,12 +35,12 @@ async def test_company_mood_30day_ttl_override_behavior():
         score_diversity=3.7,
         review_count=435,
         summary_text="Seit 2009 haben 435...",
-        industry_score=3.6
+        industry_score=3.6,
     )
     res3 = MagicMock()
     res3.scalars.return_value.all.return_value = [new_mood]
 
-    mock_db.execute.side_effect = [res1, res2, res3]
+    mock_db.execute.side_effect = [res1, res1, res2, res3]
 
     mock_crawling_resp = MagicMock()
     mock_crawling_resp.status_code = 200
@@ -52,7 +53,7 @@ async def test_company_mood_30day_ttl_override_behavior():
             "score_diversity": 3.7,
             "review_count": 435,
             "industry_score": 3.6,
-            "summary_text": "Seit 2009 haben 435 Mitarbeiter:innen... 3,3 Punkten bewertet."
+            "summary_text": "Seit 2009 haben 435 Mitarbeiter:innen... 3,3 Punkten bewertet.",
         },
         "comments": [
             {
@@ -60,14 +61,15 @@ async def test_company_mood_30day_ttl_override_behavior():
                 "title": "Neuer Kommentar",
                 "content": "Super Arbeitsumfeld",
                 "rating": 4.0,
-                "published_date": "2026-06-01"
+                "published_date": "2026-06-01",
             }
-        ]
+        ],
     }
 
-    with patch("httpx.AsyncClient.post", AsyncMock(return_value=mock_crawling_resp)), \
-         patch("httpx.AsyncClient.get", AsyncMock(return_value=MagicMock(status_code=404))):
-
+    with (
+        patch("httpx.AsyncClient.post", AsyncMock(return_value=mock_crawling_resp)),
+        patch("httpx.AsyncClient.get", AsyncMock(return_value=MagicMock(status_code=404))),
+    ):
         res = await get_company_mood("HOCH Health Ostschweiz", mock_db)
 
         assert mock_db.add.call_count == 1

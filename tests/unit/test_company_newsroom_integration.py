@@ -19,9 +19,7 @@ class TestCompanyNewsroomIntegration(unittest.IsolatedAsyncioTestCase):
                 {
                     "id": "72049c98-78ca-4a46-b84d-016a94f5aa22",
                     "name": "Deutsche Gesellschaft für Internationale Zusammenarbeit (GIZ) GmbH",
-                    "portal_links": {
-                        "newsroom": ["https://www.giz.de/en/newsroom"]
-                    }
+                    "portal_links": {"newsroom": ["https://www.giz.de/en/newsroom"]},
                 }
             ]
         }
@@ -35,7 +33,7 @@ class TestCompanyNewsroomIntegration(unittest.IsolatedAsyncioTestCase):
                 "link": "https://www.giz.de/en/news/climate",
                 "content": "GIZ launches new climate initiative.",
                 "category": "Newsroom",
-                "published_at": "2026-07-24"
+                "published_at": "2026-07-24",
             }
         ]
 
@@ -45,9 +43,10 @@ class TestCompanyNewsroomIntegration(unittest.IsolatedAsyncioTestCase):
         async def mock_post(*args, **kwargs):
             return mock_scrape_resp
 
-        with patch("httpx.AsyncClient.get", side_effect=mock_get), \
-             patch("httpx.AsyncClient.post", side_effect=mock_post):
-
+        with (
+            patch("httpx.AsyncClient.get", side_effect=mock_get),
+            patch("httpx.AsyncClient.post", side_effect=mock_post),
+        ):
             results = await get_company_news("72049c98-78ca-4a46-b84d-016a94f5aa22", mock_db)
             self.assertEqual(len(results), 1)
             self.assertEqual(results[0].title, "GIZ Climate Action News")

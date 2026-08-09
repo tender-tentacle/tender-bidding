@@ -420,19 +420,22 @@ def _resolve_attachment_links(source_doc_name: str | None, attachments: list) ->
     if source_doc_name and source_doc_name.lower() != "notice":
         # Attempt to resolve from actual attachments
         name_lower = source_doc_name.lower()
-        for att in attachments:
-            att_title = (att.get("title") or "").lower()
-            att_url = att.get("url") or ""
-            att_filename = att_url.split("/")[-1].lower()
-            if (
-                name_lower in att_title
-                or att_title in name_lower
-                or name_lower in att_filename
-                or att_filename in name_lower
-            ):
-                link_original_doc = att.get("url")
-                link_parsed_doc = att.get("url")
-                break
+        if isinstance(attachments, list):
+            for att in attachments:
+                if not isinstance(att, dict):
+                    continue
+                att_title = (att.get("title") or "").lower()
+                att_url = att.get("url") or ""
+                att_filename = att_url.split("/")[-1].lower()
+                if (
+                    name_lower in att_title
+                    or att_title in name_lower
+                    or name_lower in att_filename
+                    or att_filename in name_lower
+                ):
+                    link_original_doc = att.get("url")
+                    link_parsed_doc = att.get("url")
+                    break
 
         # Fallback mockup URL for visual completeness in mock/test mode
         if not link_original_doc:
@@ -446,7 +449,14 @@ def _create_required_documents(db: AsyncSession, docs_payload: list, attachments
     """Helper to create RequiredDocument database models."""
     import hashlib
 
-    for doc in docs_payload:
+    if not isinstance(docs_payload, list):
+        docs_payload = []
+    if not isinstance(attachments, list):
+        attachments = []
+
+    for idx, doc in enumerate(docs_payload):
+        if not isinstance(doc, dict):
+            continue
         source_doc_name = doc.get("source_doc_name")
         link_original, link_parsed = _resolve_attachment_links(source_doc_name, attachments)
 
@@ -454,8 +464,8 @@ def _create_required_documents(db: AsyncSession, docs_payload: list, attachments
         if is_mand is None:
             is_mand = True
 
-        raw_id = doc.get("id") or ""
-        doc_unique_id = hashlib.md5(f"{bid_id}_{raw_id}".encode()).hexdigest()
+        raw_id = doc.get("id") or doc.get("document_name") or str(idx)
+        doc_unique_id = hashlib.md5(f"{bid_id}_{idx}_{raw_id}".encode()).hexdigest()
 
         db_doc = RequiredDocument(
             id=doc_unique_id,
@@ -476,7 +486,12 @@ def _create_key_dates(db: AsyncSession, deadlines_payload: list, bid_id: str):
     """Helper to parse dates and build KeyDate database models."""
     from datetime import datetime
 
+    if not isinstance(deadlines_payload, list):
+        deadlines_payload = []
+
     for dl in deadlines_payload:
+        if not isinstance(dl, dict):
+            continue
         dt_val = dl.get("date")
         if isinstance(dt_val, str):
             try:
@@ -581,10 +596,7 @@ async def enrich_bid_requirements(
 
 
 @router.post("/by-source/{source_ref}/evaluate-pricing")
-async def evaluate_pricing_quality_endpoint(
-    source_ref: str,
-    db: Annotated[AsyncSession, Depends(get_db)]
-):
+async def evaluate_pricing_quality_endpoint(source_ref: str, db: Annotated[AsyncSession, Depends(get_db)]):
     """Trigger the Pricing Quality AI evaluation and cache it."""
     from services.bid_service import get_by_source_ref
     from services.pricing_evaluation import evaluate_pricing_strategy
@@ -599,10 +611,9 @@ async def evaluate_pricing_quality_endpoint(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.post("/{bid_id}/extract-metadata", response_model=BidDetail)
-async def extract_bid_metadata(
-    bid_id: str, request: Request, db: Annotated[AsyncSession, Depends(get_db)]
-):
+async def extract_bid_metadata(bid_id: str, request: Request, db: Annotated[AsyncSession, Depends(get_db)]):
     """Trigger the AI extraction of Price/Quality Ratio, Target Budget, Procurement Procedure and Company Description."""
     from core.ai_client import get_ai_client
     from services.bid_service import create_bid_from_snapshot
@@ -681,10 +692,8 @@ async def extract_bid_metadata(
         profile = result.scalars().first()
         if not profile:
             from datetime import datetime
-            profile = CompanyProfile(
-                company_id=company_id,
-                crawled_date=datetime.now(UTC).replace(tzinfo=None)
-            )
+
+            profile = CompanyProfile(company_id=company_id, crawled_date=datetime.now(UTC).replace(tzinfo=None))
             db.add(profile)
         profile.company_description = metadata.get("company_description")
 
@@ -692,20 +701,18 @@ async def extract_bid_metadata(
     import logging
 
     from models.bid import KEYDATE_KINDS, KeyDate, RequiredDocument
+
     logger = logging.getLogger("bids-api")
 
     for kd in metadata.get("key_dates", []):
         try:
             from datetime import datetime
-            dt = datetime.fromisoformat(kd["date"].replace('Z', '+00:00'))
+
+            dt = datetime.fromisoformat(kd["date"].replace("Z", "+00:00"))
             kind = kd.get("kind", "").lower()
             if kind not in KEYDATE_KINDS:
                 kind = "submission" if "submission" in kind else "delivery" if "delivery" in kind else "start"
-            new_kd = KeyDate(
-                bid_id=bid.id,
-                kind=kind if kind in KEYDATE_KINDS else "submission",
-                date=dt
-            )
+            new_kd = KeyDate(bid_id=bid.id, kind=kind if kind in KEYDATE_KINDS else "submission", date=dt)
             db.add(new_kd)
         except Exception as e:
             logger.warning(f"Failed to parse key date {kd}: {e}")
@@ -718,7 +725,7 @@ async def extract_bid_metadata(
                 document_name=doc.get("document_name", "Unknown Document"),
                 category=doc.get("category", "compliance"),
                 is_mandatory=doc.get("is_mandatory", True),
-                status="open"
+                status="open",
             )
             db.add(new_doc)
         except Exception as e:

@@ -26,7 +26,7 @@ async def main():
         "company_historic_tender",
         "company_insolvency",
         "company_reputation_cache",
-        "buyer_intelligence_cache"
+        "buyer_intelligence_cache",
     ]
     async with SessionLocal() as db:
         try:
@@ -47,6 +47,7 @@ async def main():
             pass
         await db.commit()
     print("Bidding database safely wiped!")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

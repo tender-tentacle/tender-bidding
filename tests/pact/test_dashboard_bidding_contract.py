@@ -91,6 +91,7 @@ async def test_health_probe_for_optional_deployment():
         assert r.status_code == 200
         assert r.json()["service"] == "bidding"
 
+
 @pytest.mark.asyncio
 async def test_company_profile_honours_dashboard_contract():
     from datetime import datetime
@@ -100,7 +101,11 @@ async def test_company_profile_honours_dashboard_contract():
 
     company_id = "pact-company"
     async with SessionLocal() as db_session:
-        db_session.add(CompanyProfile(company_id=company_id, description="Pact test", crawled_date=datetime.now(UTC).replace(tzinfo=None)))
+        db_session.add(
+            CompanyProfile(
+                company_id=company_id, description="Pact test", crawled_date=datetime.now(UTC).replace(tzinfo=None)
+            )
+        )
         await db_session.commit()
 
     async with api_client() as client:

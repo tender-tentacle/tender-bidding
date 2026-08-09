@@ -56,7 +56,10 @@ async def get_company_reputation(company_id: str, db: AsyncSession = Depends(get
             try:
                 import importlib.util
                 from pathlib import Path
-                ai_web_client_path = Path(__file__).parents[3] / "artificial-intelligence-connector" / "core" / "web_client.py"
+
+                ai_web_client_path = (
+                    Path(__file__).parents[3] / "artificial-intelligence-connector" / "core" / "web_client.py"
+                )
                 spec = importlib.util.spec_from_file_location("ai_core_web_client", str(ai_web_client_path))
                 ai_web_client = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(ai_web_client)
@@ -64,6 +67,8 @@ async def get_company_reputation(company_id: str, db: AsyncSession = Depends(get
                 portal_links = res_data.get("portal_links", {})
             except Exception as ex:
                 logger.error(f"Fallback discovery failed: {ex}")
+
+    CRAWLING_MS_URL = os.getenv("CRAWLING_URL", "http://tender-crawling:8001").rstrip("/")
 
     if portal_links:
         # Persist discovered portal links & scraped data into 30-day DB cache
@@ -75,22 +80,57 @@ async def get_company_reputation(company_id: str, db: AsyncSession = Depends(get
                 search_type = "financials"
 
             if isinstance(target_url, list):
-                cat_payload = [{"url": u, "title": f"{company_name} {search_type.capitalize()} Portal"} for u in target_url if isinstance(u, str) and u.strip()]
+                cat_payload = [
+                    {"url": u, "title": f"{company_name} {search_type.capitalize()} Portal"}
+                    for u in target_url
+                    if isinstance(u, str) and u.strip()
+                ]
             elif isinstance(target_url, str) and target_url.strip():
-                cat_payload = [{"url": target_url.strip(), "title": f"{company_name} {search_type.capitalize()} Portal"}]
+                cat_payload = [
+                    {"url": target_url.strip(), "title": f"{company_name} {search_type.capitalize()} Portal"}
+                ]
             else:
                 cat_payload = []
 
             if cat_payload:
                 categories_data[search_type] = cat_payload
 
-                new_cache = CompanyReputationCache(
-                    company_id=company_id,
-                    search_type=search_type,
-                    cached_data=cat_payload,
+    # 3. Query DDG Reputation Scraper for actual scraped news articles and job offers
+    async with httpx.AsyncClient(timeout=25.0) as client:
+        for stype in ["news", "jobs"]:
+            try:
+                res = await client.post(
+                    f"{CRAWLING_MS_URL}/api/v1/scrape/reputation/ddg",
+                    json={"query": company_name, "search_type": stype},
+                    timeout=20.0,
                 )
-                db.add(new_cache)
+                if res.status_code == 200:
+                    ddg_results = res.json()
+                    if ddg_results and isinstance(ddg_results, list):
+                        existing_urls = {
+                            item.get("url")
+                            for item in categories_data[stype]
+                            if isinstance(item, dict) and item.get("url")
+                        }
+                        for d_item in ddg_results:
+                            if isinstance(d_item, dict) and d_item.get("url") not in existing_urls:
+                                d_item["type"] = stype
+                                categories_data[stype].append(d_item)
+                                existing_urls.add(d_item.get("url"))
+            except Exception as e:
+                logger.warning(f"Failed to fetch DDG reputation {stype} for {company_name}: {e}")
 
+    # Persist all discovered & scraped categories into DB cache
+    for search_type, cat_payload in categories_data.items():
+        if cat_payload:
+            new_cache = CompanyReputationCache(
+                company_id=company_id,
+                search_type=search_type,
+                cached_data=cat_payload,
+            )
+            db.add(new_cache)
+
+    if any(categories_data.values()):
         await db.commit()
 
     return categories_data

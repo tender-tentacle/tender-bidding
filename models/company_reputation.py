@@ -10,7 +10,7 @@ class CompanyReputationCache(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     company_id = Column(String(255), index=True, nullable=False)
-    search_type = Column(String(50), nullable=False) # 'news' or 'jobs'
+    search_type = Column(String(50), nullable=False)  # 'news' or 'jobs'
     cached_data = Column(JSON, nullable=False)
     crawled_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 

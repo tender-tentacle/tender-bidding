@@ -15,11 +15,8 @@ class TestMultiPortalLinks(unittest.IsolatedAsyncioTestCase):
         mock_portal_data = {
             "data": {
                 "portal_links": {
-                    "newsroom_url": [
-                        "https://newsroom.giz.de/primary",
-                        "https://newsroom.giz.de/secondary"
-                    ],
-                    "kununu_url": ["https://kununu.com/de/giz"]
+                    "newsroom_url": ["https://newsroom.giz.de/primary", "https://newsroom.giz.de/secondary"],
+                    "kununu_url": ["https://kununu.com/de/giz"],
                 }
             }
         }

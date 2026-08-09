@@ -15,7 +15,7 @@ class TestNorthDataPactContract(unittest.TestCase):
 
     def test_pact_json_validity(self):
         self.assertTrue(os.path.exists(self.pact_file_path), f"Pact file not found: {self.pact_file_path}")
-        with open(self.pact_file_path, "r", encoding="utf-8") as f:
+        with open(self.pact_file_path, encoding="utf-8") as f:
             pact_data = json.load(f)
 
         self.assertEqual(pact_data.get("consumer", {}).get("name"), "UserDashboard")

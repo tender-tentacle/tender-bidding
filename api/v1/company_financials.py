@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 router = APIRouter(tags=["company-financials"])
 logger = logging.getLogger("company-financials")
 
+
 class CompanyFinancialsSchema(BaseModel):
     id: str
     company_id: str
@@ -24,6 +25,7 @@ class CompanyFinancialsSchema(BaseModel):
 
     class Config:
         from_attributes = True
+
 
 @router.get("/company/{company_id:path}/financials", response_model=list[CompanyFinancialsSchema])
 async def get_company_financials(company_id: str, db: AsyncSession = Depends(get_db)):

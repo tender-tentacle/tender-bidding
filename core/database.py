@@ -25,21 +25,16 @@ if not _url:
         db_name = os.getenv("SQL_DATABASE", "bidding")
         _url = f"mssql+aioodbc://{sql_user}:{sql_password}@{sql_server}:1433/{db_name}?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=no&MARS_Connection=yes"
     else:
-        import sys
-
-        if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
-            # Local SQLite fallback. Prefer /data (Docker named volume) when writable,
-            # else the service directory — never crash on an unwritable /data (dev/tests).
-            data_dir = os.getenv("SQLITE_DATA_DIR", "/data")
-            try:
-                os.makedirs(data_dir, exist_ok=True)
-                if not os.access(data_dir, os.W_OK):
-                    raise OSError(f"{data_dir} not writable")
-            except OSError:
-                data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            _url = f"sqlite+aiosqlite:///{data_dir}/bidding.db"
-        else:
-            raise ValueError("DATABASE_URL environment variable is required")
+        # Local SQLite fallback. Prefer /data (Docker named volume) when writable,
+        # else the service directory — never crash on an unwritable /data (dev/tests).
+        data_dir = os.getenv("SQLITE_DATA_DIR", "/data")
+        try:
+            os.makedirs(data_dir, exist_ok=True)
+            if not os.access(data_dir, os.W_OK):
+                raise OSError(f"{data_dir} not writable")
+        except OSError:
+            data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        _url = f"sqlite+aiosqlite:///{data_dir}/bidding.db"
 
 DATABASE_URL_RESOLVED = _url
 
@@ -123,11 +118,7 @@ async def init_db() -> None:
                     await conn.execute(text(f"ALTER TABLE bid ADD COLUMN {col} JSON"))
                     logger.info(f"SQLite migration: Added column {col} to bid")
 
-            for col in [
-                "price_quality_ratio",
-                "target_budget",
-                "procurement_procedure"
-            ]:
+            for col in ["price_quality_ratio", "target_budget", "procurement_procedure"]:
                 if col not in existing_cols:
                     await conn.execute(text(f"ALTER TABLE bid ADD COLUMN {col} VARCHAR(255)"))
                     logger.info(f"SQLite migration: Added column {col} to bid")
@@ -156,6 +147,19 @@ async def init_db() -> None:
                 if col not in existing_cols:
                     await conn.execute(text(f"ALTER TABLE company_profiles ADD COLUMN {col} {col_type}"))
                     logger.info(f"SQLite migration: Added column {col} to company_profiles")
+
+            cols_res = await conn.execute(text("PRAGMA table_info(bid_company_northdata)"))
+            existing_cols = {row[1] for row in cols_res.fetchall()}
+            for col, col_type in [
+                ("euid", "VARCHAR(255)"),
+                ("former_names", "JSON"),
+                ("balance_sheet", "JSON"),
+                ("financials", "JSON"),
+                ("ownership", "JSON"),
+            ]:
+                if col not in existing_cols:
+                    await conn.execute(text(f"ALTER TABLE bid_company_northdata ADD COLUMN {col} {col_type}"))
+                    logger.info(f"SQLite migration: Added column {col} to bid_company_northdata")
         else:
             for col, col_type in [
                 ("short_summary", "NVARCHAR(MAX)"),
@@ -207,11 +211,7 @@ async def init_db() -> None:
                 """
                 await conn.execute(text(check_sql_col))
 
-            for col in [
-                "price_quality_ratio",
-                "target_budget",
-                "procurement_procedure"
-            ]:
+            for col in ["price_quality_ratio", "target_budget", "procurement_procedure"]:
                 check_sql_col = f"""
                 IF COL_LENGTH('bid', '{col}') IS NULL
                 BEGIN

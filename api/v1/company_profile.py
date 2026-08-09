@@ -15,6 +15,7 @@ router = APIRouter()
 
 # ── DATABASE MODEL ───────────────────────────────────────────────
 
+
 class CompanyProfile(Base):
     __tablename__ = "company_profiles"
 
@@ -43,7 +44,19 @@ class CompanyProfile(Base):
     incumbent_advantage_summary = Column(String(4000), nullable=True)
     competitor_density_summary = Column(String(4000), nullable=True)
 
+    # Service.bund.de Authority Metadata
+    servicebund_url = Column(String(1000), nullable=True)
+    servicebund_description = Column(String(4000), nullable=True)
+    servicebund_main_address = Column(String(1000), nullable=True)
+    servicebund_secondary_address = Column(String(1000), nullable=True)
+    servicebund_phone = Column(String(100), nullable=True)
+    servicebund_fax = Column(String(100), nullable=True)
+    servicebund_email = Column(String(255), nullable=True)
+    servicebund_website = Column(String(1000), nullable=True)
+
+
 # ── SCHEMAS ──────────────────────────────────────────────────────
+
 
 class CompanyProfileSchema(BaseModel):
     company_id: str
@@ -71,16 +84,27 @@ class CompanyProfileSchema(BaseModel):
     incumbent_advantage_summary: str | None = None
     competitor_density_summary: str | None = None
 
+    servicebund_url: str | None = None
+    servicebund_description: str | None = None
+    servicebund_main_address: str | None = None
+    servicebund_secondary_address: str | None = None
+    servicebund_phone: str | None = None
+    servicebund_fax: str | None = None
+    servicebund_email: str | None = None
+    servicebund_website: str | None = None
+
     class Config:
         from_attributes = True
 
+
 # ── ENDPOINTS ────────────────────────────────────────────────────
+
 
 @router.get("/company/{company_id:path}/profile", response_model=CompanyProfileSchema)
 async def get_company_profile(company_id: str, db: AsyncSession = Depends(get_db)):
     """
-    Get company profile from Wikipedia.
-    If no recent data is found (younger than 30 days), trigger the scraper.
+    Get company profile from Wikipedia & Service.bund.de.
+    If no recent data is found (younger than 30 days), trigger the scrapers.
     """
     # DB stores naive UTC datetimes — compare naive UTC on both sides
     thirty_days_ago = datetime.utcnow() - timedelta(days=30)
@@ -96,36 +120,87 @@ async def get_company_profile(company_id: str, db: AsyncSession = Depends(get_db
             return profile
 
     # Needs fetching from crawling service
-    logger.info(f"Triggering Wikipedia scraper for {company_id}")
+    logger.info(f"Triggering Wikipedia & Service.bund.de scrapers for {company_id}")
     crawling_url = os.getenv("CRAWLING_URL", "http://tender-crawling:8001")
 
     try:
         async with httpx.AsyncClient() as client:
-            res = await client.post(
-                f"{crawling_url}/api/v1/scrape/wikipedia",
-                json={"query": company_id},
-                timeout=15
+            wiki_res = await client.post(
+                f"{crawling_url}/api/v1/scrape/wikipedia", json={"query": company_id}, timeout=15
             )
-        if res.status_code == 200:
-            data = res.json()
-            if profile:
-                profile.description = data.get("description")
-                profile.logo_url = data.get("logo_url")
-                profile.wikipedia_url = data.get("wikipedia_url")
-                profile.crawled_date = datetime.now(UTC).replace(tzinfo=None)
-            else:
-                profile = CompanyProfile(
-                    company_id=company_id,
-                    description=data.get("description"),
-                    logo_url=data.get("logo_url"),
-                    wikipedia_url=data.get("wikipedia_url"),
-                    crawled_date=datetime.now(UTC).replace(tzinfo=None)
-                )
-                db.add(profile)
+            sb_res = await client.post(
+                f"{crawling_url}/api/v1/scrape/servicebund_authority", json={"query": company_id}, timeout=15
+            )
 
-            await db.commit()
-            await db.refresh(profile)
-            return profile
+        wiki_data = wiki_res.json() if wiki_res.status_code == 200 else {}
+        sb_data = sb_res.json() if sb_res.status_code == 200 else {}
+
+        sb_main_addr = None
+        if sb_data.get("main_address"):
+            m = sb_data["main_address"]
+            parts = [
+                p
+                for p in [
+                    m.get("street"),
+                    f"{m.get('zipcode', '')} {m.get('city', '')}".strip(),
+                    m.get("state"),
+                    m.get("country"),
+                ]
+                if p
+            ]
+            if parts:
+                sb_main_addr = ", ".join(parts)
+
+        sb_sec_addr = None
+        if sb_data.get("secondary_address"):
+            m = sb_data["secondary_address"]
+            parts = [
+                p
+                for p in [
+                    m.get("street"),
+                    f"{m.get('zipcode', '')} {m.get('city', '')}".strip(),
+                    m.get("state"),
+                    m.get("country"),
+                ]
+                if p
+            ]
+            if parts:
+                sb_sec_addr = ", ".join(parts)
+
+        if profile:
+            profile.description = wiki_data.get("description") or profile.description
+            profile.logo_url = wiki_data.get("logo_url") or profile.logo_url
+            profile.wikipedia_url = wiki_data.get("wikipedia_url") or profile.wikipedia_url
+            profile.servicebund_url = sb_data.get("url") or profile.servicebund_url
+            profile.servicebund_description = sb_data.get("description") or profile.servicebund_description
+            profile.servicebund_main_address = sb_main_addr or profile.servicebund_main_address
+            profile.servicebund_secondary_address = sb_sec_addr or profile.servicebund_secondary_address
+            profile.servicebund_phone = sb_data.get("phone") or profile.servicebund_phone
+            profile.servicebund_fax = sb_data.get("fax") or profile.servicebund_fax
+            profile.servicebund_email = sb_data.get("email") or profile.servicebund_email
+            profile.servicebund_website = sb_data.get("website") or profile.servicebund_website
+            profile.crawled_date = datetime.now(UTC).replace(tzinfo=None)
+        else:
+            profile = CompanyProfile(
+                company_id=company_id,
+                description=wiki_data.get("description"),
+                logo_url=wiki_data.get("logo_url"),
+                wikipedia_url=wiki_data.get("wikipedia_url"),
+                servicebund_url=sb_data.get("url"),
+                servicebund_description=sb_data.get("description"),
+                servicebund_main_address=sb_main_addr,
+                servicebund_secondary_address=sb_sec_addr,
+                servicebund_phone=sb_data.get("phone"),
+                servicebund_fax=sb_data.get("fax"),
+                servicebund_email=sb_data.get("email"),
+                servicebund_website=sb_data.get("website"),
+                crawled_date=datetime.now(UTC).replace(tzinfo=None),
+            )
+            db.add(profile)
+
+        await db.commit()
+        await db.refresh(profile)
+        return profile
     except Exception as e:
         logger.warning(f"Crawling service call for company {company_id} encountered error/fallback: {e}")
 
@@ -137,8 +212,9 @@ async def get_company_profile(company_id: str, db: AsyncSession = Depends(get_db
         description=f"Unternehmensprofil für {company_id}",
         logo_url=None,
         wikipedia_url=None,
-        crawled_date=datetime.now(UTC).replace(tzinfo=None)
+        crawled_date=datetime.now(UTC).replace(tzinfo=None),
     )
+
 
 @router.post("/company/{company_id:path}/summarize/{summary_type}", response_model=CompanyProfileSchema)
 async def summarize_company_data(company_id: str, summary_type: str, db: AsyncSession = Depends(get_db)):
@@ -159,10 +235,7 @@ async def summarize_company_data(company_id: str, summary_type: str, db: AsyncSe
     profile = result.scalars().first()
 
     if not profile:
-        profile = CompanyProfile(
-            company_id=company_id,
-            crawled_date=datetime.utcnow()
-        )
+        profile = CompanyProfile(company_id=company_id, crawled_date=datetime.utcnow())
         db.add(profile)
 
     # Check cache
@@ -183,7 +256,9 @@ async def summarize_company_data(company_id: str, summary_type: str, db: AsyncSe
     if summary_type == "financial":
         res = await db.execute(select(CompanyRegisterEntry).where(CompanyRegisterEntry.company_id == company_id))
         docs = res.scalars().all()
-        raw_data["financial_data"] = [{"title": d.title, "content": d.content, "date": str(d.published_date)} for d in docs]
+        raw_data["financial_data"] = [
+            {"title": d.title, "content": d.content, "date": str(d.published_date)} for d in docs
+        ]
         prompt_id = "bidding_financial_summary"
     elif summary_type == "hiring":
         res = await db.execute(select(CompanyJobEntry).where(CompanyJobEntry.company_id == company_id))
@@ -197,6 +272,7 @@ async def summarize_company_data(company_id: str, summary_type: str, db: AsyncSe
         prompt_id = "bidding_buyer_reputation"
     elif summary_type == "news":
         from models.bid import CompanyNewsEntry
+
         res = await db.execute(select(CompanyNewsEntry).where(CompanyNewsEntry.company_id == company_id))
         news = res.scalars().all()
         raw_data["news_data"] = [{"title": n.title, "content": n.content, "date": n.published_date} for n in news]
@@ -220,6 +296,7 @@ async def summarize_company_data(company_id: str, summary_type: str, db: AsyncSe
     await db.refresh(profile)
     return profile
 
+
 @router.post("/company/{company_id:path}/historic-tenders", response_model=CompanyProfileSchema)
 async def evaluate_historic_tenders(company_id: str, db: AsyncSession = Depends(get_db)):
     """Fetch historic tenders from crawler, cache them, and evaluate incumbent advantage/competitor density."""
@@ -233,10 +310,7 @@ async def evaluate_historic_tenders(company_id: str, db: AsyncSession = Depends(
     profile = result.scalars().first()
 
     if not profile:
-        profile = CompanyProfile(
-            company_id=company_id,
-            crawled_date=datetime.utcnow()
-        )
+        profile = CompanyProfile(company_id=company_id, crawled_date=datetime.utcnow())
         db.add(profile)
 
     # Check cache for historic tenders
@@ -252,16 +326,19 @@ async def evaluate_historic_tenders(company_id: str, db: AsyncSession = Depends(
             import uuid
 
             import httpx
+
             async with httpx.AsyncClient() as client:
                 resp = await client.post(
-                    f"{crawling_url}/api/v1/scrape/ted/historic?company_id={company_id}",
-                    timeout=60
+                    f"{crawling_url}/api/v1/scrape/ted/historic?company_id={company_id}", timeout=60
                 )
             if resp.status_code == 200:
                 # Clear old cache
                 if tenders:
                     from sqlalchemy import delete
-                    await db.execute(delete(CompanyHistoricTender).where(CompanyHistoricTender.company_id == company_id))
+
+                    await db.execute(
+                        delete(CompanyHistoricTender).where(CompanyHistoricTender.company_id == company_id)
+                    )
 
                 fetched = resp.json()
                 tenders = []
@@ -274,7 +351,7 @@ async def evaluate_historic_tenders(company_id: str, db: AsyncSession = Depends(
                         link=t.get("url"),
                         content=t.get("description"),
                         published_date=t.get("published_at"),
-                        crawled_date=datetime.now(UTC).replace(tzinfo=None)
+                        crawled_date=datetime.now(UTC).replace(tzinfo=None),
                     )
                     db.add(new_tender)
                     tenders.append(new_tender)
