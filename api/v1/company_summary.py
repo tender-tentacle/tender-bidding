@@ -1,7 +1,6 @@
 """Company Data Summary & One Pager API endpoints."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 from core.database import get_db
 from fastapi import APIRouter, Depends, HTTPException
