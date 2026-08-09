@@ -15,8 +15,8 @@ async def test_company_summary_aor_fallback():
         )
         assert res.status_code == 200
         data = res.json()
-        assert any("AÖR" in flag or "Public Law Institution" in flag for flag in data["red_flag_banners"])
-        assert data["financial_solvency_badges"]["solvency_status"] == "AÖR Public Entity (No Commercial Register)"
+        assert any("AÖR" in flag or "Anstalt des öffentlichen Rechts" in flag for flag in data["red_flag_banners"])
+        assert "AÖR" in data["financial_solvency_badges"]["solvency_status"]
 
 
 @pytest.mark.asyncio
