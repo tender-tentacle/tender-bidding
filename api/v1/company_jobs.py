@@ -308,8 +308,7 @@ async def get_company_jobs(company_id: str, db: AsyncSession = Depends(get_db)):
 
     kununu_entries = [
         e for e in entries
-        if not (e.source_url and ("arbeitsagentur" in e.source_url.lower() or "jobboerse" in e.source_url.lower() or "bund.de" in e.source_url.lower() or "service.bund.de" in e.source_url.lower()))
-        and not (e.url and ("arbeitsagentur" in e.url.lower() or "jobboerse" in e.url.lower() or "bund.de" in e.url.lower() or "service.bund.de" in e.url.lower()))
+        if (e.source_url and "kununu" in e.source_url.lower()) or (e.url and "kununu" in e.url.lower())
     ]
 
     if kununu_entries:
