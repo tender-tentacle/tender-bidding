@@ -329,6 +329,8 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
                 existing_j.employment_type = j.get("employment_type", "Vollzeit")
                 existing_j.published_date = j.get("published_at") or j.get("published_date")
                 existing_j.salary_range = j.get("salary_range")
+                existing_j.url = j_url
+                existing_j.source_url = j_url
                 existing_j.crawled_date = datetime.now(UTC)
             else:
                 db.add(
@@ -339,6 +341,7 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
                         location=j.get("location", "Deutschland"),
                         employment_type=j.get("employment_type", "Vollzeit"),
                         url=j_url,
+                        source_url=j_url,
                         published_date=j.get("published_at") or j.get("published_date"),
                         salary_range=j.get("salary_range"),
                         crawled_date=datetime.now(UTC),

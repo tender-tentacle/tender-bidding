@@ -293,44 +293,33 @@ async def scrape_company_servicebund_jobs(company_id: str, db: AsyncSession = De
 @router.get("/company/{company_id:path}/jobs", response_model=list[CompanyJobSchema])
 async def get_company_jobs(company_id: str, db: AsyncSession = Depends(get_db)):
     """
-    Get open job positions for a specific company.
-    If no recent data is found (last 30 days), it will trigger the Jobsuche & Kununu scrapers.
+    Get Kununu open job positions for a specific company.
+    If no recent data is found (last 30 days), it will trigger the Kununu scraper.
     """
     thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
 
     stmt = select(CompanyJobEntry).where(
-        func.lower(CompanyJobEntry.company_id) == company_id.lower(),
-        CompanyJobEntry.crawled_date >= thirty_days_ago
+        (func.lower(CompanyJobEntry.company_id) == company_id.lower()) |
+        (func.lower(CompanyJobEntry.company_id).contains(company_id.lower())),
+        (CompanyJobEntry.crawled_date >= thirty_days_ago) | (CompanyJobEntry.crawled_date.is_(None))
     )
     result = await db.execute(stmt)
-    existing_entries = result.scalars().all()
+    entries = result.scalars().all()
 
-    if existing_entries:
-        logger.info(f"Returning cached Jobsuche data for company {company_id}")
-        return existing_entries
+    kununu_entries = [
+        e for e in entries
+        if not (e.source_url and ("arbeitsagentur" in e.source_url.lower() or "jobboerse" in e.source_url.lower() or "bund.de" in e.source_url.lower() or "service.bund.de" in e.source_url.lower()))
+        and not (e.url and ("arbeitsagentur" in e.url.lower() or "jobboerse" in e.url.lower() or "bund.de" in e.url.lower() or "service.bund.de" in e.url.lower()))
+    ]
 
-    logger.info(f"No recent Jobsuche data for {company_id}. Triggering scraper in crawling ms...")
+    if kununu_entries:
+        logger.info(f"Returning {len(kununu_entries)} cached Kununu job entries for company {company_id}")
+        return kununu_entries
+
+    logger.info(f"No recent Kununu job data for {company_id}. Triggering scraper in crawling ms...")
 
     scraped_entries = []
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        # Clean company name for the search query to improve results
-        search_query = re.sub(r"\(.*?\)", "", company_id)
-        search_query = re.sub(r"\b(GmbH|AG|SE|Co\.|KG|Ltd\.|Inc\.|Corp\.)\b", "", search_query, flags=re.IGNORECASE)
-        search_query = " ".join(search_query.split())
-
-        payload = {"query": search_query}
-
-        # 1. Fetch from BA Jobsuche
-        try:
-            crawling_response = await client.post(f"{CRAWLING_MS_URL}/api/v1/scrape/jobsuche", json=payload)
-            if crawling_response.status_code == 200:
-                for item in (crawling_response.json() or []):
-                    item["source_url"] = item.get("source_url") or "https://www.arbeitsagentur.de/jobsuche"
-                    scraped_entries.append(item)
-        except Exception as e:
-            logger.warning(f"BA Jobsuche scraping error: {e}")
-
-        # 2. Fetch from Kununu Jobs
+    async with httpx.AsyncClient(timeout=30.0) as client:
         try:
             kununu_jobs_resp = await client.post(
                 f"{CRAWLING_MS_URL}/api/v1/scrape/kununu/jobs", json={"query": company_id}, timeout=15.0
@@ -338,6 +327,7 @@ async def get_company_jobs(company_id: str, db: AsyncSession = Depends(get_db)):
             if kununu_jobs_resp.status_code == 200:
                 k_jobs = kununu_jobs_resp.json()
                 for kj in k_jobs:
+                    job_url = kj.get("url") or f"https://www.kununu.com/de/{company_id}/jobs"
                     scraped_entries.append(
                         {
                             "hash": kj.get("hash"),
@@ -345,16 +335,15 @@ async def get_company_jobs(company_id: str, db: AsyncSession = Depends(get_db)):
                             "location": kj.get("location"),
                             "employment_type": kj.get("employment_type"),
                             "published_at": kj.get("published_at"),
-                            "source_url": kj.get("url"),
+                            "source_url": job_url,
+                            "url": job_url,
                         }
                     )
         except Exception as e:
             logger.warning(f"Kununu jobs scraping error: {e}")
 
         if not scraped_entries:
-            # No live data available — return empty list honestly.
-            # Do NOT inject fabricated/hardcoded job entries.
-            logger.info(f"No live job data found for {company_id}. Returning empty list.")
+            logger.info(f"No live Kununu job data found for {company_id}. Returning empty list.")
             return []
 
     new_entries = []
@@ -375,6 +364,7 @@ async def get_company_jobs(company_id: str, db: AsyncSession = Depends(get_db)):
             employment_type=entry.get("employment_type"),
             published_date=entry.get("published_at"),
             source_url=entry.get("source_url"),
+            url=entry.get("url") or entry.get("source_url"),
         )
         db.add(new_entry)
         new_entries.append(new_entry)
@@ -383,11 +373,20 @@ async def get_company_jobs(company_id: str, db: AsyncSession = Depends(get_db)):
         if new_entries:
             await db.commit()
     except Exception as e:
-        logger.error(f"Error saving Jobsuche entries: {e}")
+        logger.error(f"Error saving Kununu job entries: {e}")
         await db.rollback()
         raise HTTPException(status_code=500, detail="Database error while saving jobs")
 
     result = await db.execute(
-        select(CompanyJobEntry).where(func.lower(CompanyJobEntry.company_id) == company_id.lower())
+        select(CompanyJobEntry).where(
+            (func.lower(CompanyJobEntry.company_id) == company_id.lower()) |
+            (func.lower(CompanyJobEntry.company_id).contains(company_id.lower()))
+        )
     )
-    return result.scalars().all()
+    entries = result.scalars().all()
+    return [
+        e for e in entries
+        if not (e.source_url and ("arbeitsagentur" in e.source_url.lower() or "jobboerse" in e.source_url.lower() or "bund.de" in e.source_url.lower() or "service.bund.de" in e.source_url.lower()))
+        and not (e.url and ("arbeitsagentur" in e.url.lower() or "jobboerse" in e.url.lower() or "bund.de" in e.url.lower() or "service.bund.de" in e.url.lower()))
+    ]
+
