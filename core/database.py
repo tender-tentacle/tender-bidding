@@ -161,6 +161,68 @@ async def init_db() -> None:
                     await conn.execute(text(f"ALTER TABLE bid_company_northdata ADD COLUMN {col} {col_type}"))
                     logger.info(f"SQLite migration: Added column {col} to bid_company_northdata")
         else:
+            # Widening bid.id and foreign key columns for 36-char formatted UUIDs in Azure SQL / MSSQL
+            mssql_widen_ids = """
+            IF EXISTS (
+                SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_NAME = 'bid' AND COLUMN_NAME = 'id' AND CHARACTER_MAXIMUM_LENGTH < 128
+            )
+            BEGIN
+                DECLARE @sql NVARCHAR(MAX) = '';
+                SELECT @sql += 'ALTER TABLE [' + OBJECT_SCHEMA_NAME(parent_object_id) + '].[' + OBJECT_NAME(parent_object_id) + '] DROP CONSTRAINT [' + name + '];'
+                FROM sys.foreign_keys
+                WHERE referenced_object_id = OBJECT_ID('bid');
+                IF @sql <> '' EXEC sp_executesql @sql;
+
+                DECLARE @pk NVARCHAR(MAX) = '';
+                SELECT @pk += 'ALTER TABLE [' + OBJECT_SCHEMA_NAME(parent_object_id) + '].[' + OBJECT_NAME(parent_object_id) + '] DROP CONSTRAINT [' + name + '];'
+                FROM sys.key_constraints
+                WHERE parent_object_id = OBJECT_ID('bid') AND type = 'PK';
+                IF @pk <> '' EXEC sp_executesql @pk;
+
+                ALTER TABLE bid ALTER COLUMN id VARCHAR(128) NOT NULL;
+
+                IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE parent_object_id = OBJECT_ID('bid') AND type = 'PK')
+                BEGIN
+                    ALTER TABLE bid ADD CONSTRAINT PK_bid PRIMARY KEY (id);
+                END
+            END
+
+            IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'bid' AND COLUMN_NAME = 'enriching_id' AND CHARACTER_MAXIMUM_LENGTH < 128)
+            BEGIN
+                ALTER TABLE bid ALTER COLUMN enriching_id VARCHAR(128) NULL;
+            END
+
+            IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'bid_collaborator' AND COLUMN_NAME = 'bid_id' AND CHARACTER_MAXIMUM_LENGTH < 128)
+            BEGIN
+                ALTER TABLE bid_collaborator ALTER COLUMN bid_id VARCHAR(128) NOT NULL;
+            END
+
+            IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'bid_checklist_item' AND COLUMN_NAME = 'bid_id' AND CHARACTER_MAXIMUM_LENGTH < 128)
+            BEGIN
+                ALTER TABLE bid_checklist_item ALTER COLUMN bid_id VARCHAR(128) NOT NULL;
+            END
+
+            IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'bid_document' AND COLUMN_NAME = 'bid_id' AND CHARACTER_MAXIMUM_LENGTH < 128)
+            BEGIN
+                ALTER TABLE bid_document ALTER COLUMN bid_id VARCHAR(128) NOT NULL;
+            END
+
+            IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'bid_key_date' AND COLUMN_NAME = 'bid_id' AND CHARACTER_MAXIMUM_LENGTH < 128)
+            BEGIN
+                ALTER TABLE bid_key_date ALTER COLUMN bid_id VARCHAR(128) NOT NULL;
+            END
+
+            IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'bid_required_document' AND COLUMN_NAME = 'bid_id' AND CHARACTER_MAXIMUM_LENGTH < 128)
+            BEGIN
+                ALTER TABLE bid_required_document ALTER COLUMN bid_id VARCHAR(128) NOT NULL;
+            END
+            """
+            try:
+                await conn.execute(text(mssql_widen_ids))
+            except Exception as e:
+                logger.warning(f"MSSQL id column widening notice: {e}")
+
             for col, col_type in [
                 ("short_summary", "NVARCHAR(MAX)"),
                 ("link_original_doc", "NVARCHAR(1000)"),
