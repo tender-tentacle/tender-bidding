@@ -7,10 +7,11 @@ Company: Flughafen Stuttgart GmbH
 Ref: 10005247 - Green Hydrogen Investments in India
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
-from tests.helpers import api_client
+
+import pytest
 from core.ai_client import RealAIClient
+from tests.helpers import api_client
 
 
 @pytest.mark.asyncio

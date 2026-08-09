@@ -1,7 +1,6 @@
 """Unit tests for database initialization, MSSQL schema migration, and 36-char UUID column safety."""
 
 import pytest
-from sqlalchemy import text
 from core.database import SessionLocal, init_db
 from models.bid import Bid
 from tests.helpers import api_client

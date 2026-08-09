@@ -164,7 +164,7 @@ async def init_db() -> None:
             # Widening bid.id and foreign key columns for 36-char formatted UUIDs in Azure SQL / MSSQL
             mssql_widen_ids = """
             IF EXISTS (
-                SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
+                SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
                 WHERE TABLE_NAME = 'bid' AND COLUMN_NAME = 'id' AND CHARACTER_MAXIMUM_LENGTH < 128
             )
             BEGIN
