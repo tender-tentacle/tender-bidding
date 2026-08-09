@@ -1,0 +1,107 @@
+{
+  "consumer": {
+    "name": "UserDashboard"
+  },
+  "provider": {
+    "name": "BiddingMS"
+  },
+  "interactions": [
+    {
+      "description": "a request to get North Data company master data for MHP",
+      "providerState": "Company MHP North Data exists",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/company/MHP/northdata"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "id": "248d14dc917a46ff836e44b52cd9a338",
+          "company_id": "MHP",
+          "company_name": "MHP Management- und IT-Beratung GmbH",
+          "address": "Königsallee 49, 71638 Ludwigsburg, DE",
+          "founding_date": "1997-01-28",
+          "register_court": "District Court of Stuttgart",
+          "register_number": "HRB 205571",
+          "euid": "DEB8534.HRB205571",
+          "lei_code": "3912001F4V339T0Z9469",
+          "business_purpose": "Management consulting and IT services",
+          "history_timeline": [
+            {
+              "date": "1997-01-28",
+              "summary": "28/01/1997 Registration",
+              "cat": 1
+            }
+          ],
+          "persons_timeline": [
+            {
+              "date": "2024-05-15",
+              "name": "Federico Magno",
+              "role": "Geschäftsführer",
+              "old": false
+            }
+          ],
+          "marketing_tech": [
+            {
+              "date": "2026-01-08",
+              "desc": "Patent: Real-time method for monitoring and simulating a supply chain",
+              "type": "patent"
+            }
+          ],
+          "network_links": [
+            {
+              "source_name": "MHP Management- und IT-Beratung GmbH",
+              "target_name": "Federico Magno",
+              "description": "Geschäftsführer (Aktiv)",
+              "old": false
+            }
+          ],
+          "balance_sheet": {
+            "date": "2024",
+            "total_assets": "€810.4M"
+          },
+          "financials": [
+            {
+              "year": "2024",
+              "revenue": "€810.4M",
+              "profit": "€98.4M",
+              "auditor": "EY GmbH & Co. KG"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "description": "a request to trigger live scrape of North Data for MHP",
+      "providerState": "North Data URL is valid and scrapable",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/company/MHP/northdata/scrape",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "url": "https://www.northdata.com/MHP%20Management-%20und%20IT-Beratung%20GmbH,%20Ludwigsburg/Amtsgericht%20Stuttgart%20HRB%20205571"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "company_id": "MHP",
+          "company_name": "MHP Management- und IT-Beratung GmbH"
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "pactSpecification": {
+      "version": "2.0.0"
+    }
+  }
+}

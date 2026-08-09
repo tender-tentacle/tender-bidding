@@ -29,9 +29,15 @@ class CompanyNorthDataSchema(BaseModel):
     other_registers: list | dict | None = None
     officers: list | dict | None = None
     events: list | dict | None = None
+    history_timeline: list | dict | None = None
+    persons_timeline: list | dict | None = None
+    marketing_tech: list | dict | None = None
+    tab_metrics: dict | list | None = None
+    network_links: list | dict | None = None
     balance_sheet: dict | None = None
     financials: list | dict | None = None
     ownership: list | dict | None = None
+    svg_diagrams: list | dict | None = None
     source_url: str | None = None
     crawled_date: datetime
 
@@ -114,9 +120,15 @@ async def scrape_company_northdata(company_id: str, request: ScrapeNorthDataRequ
             other_registers=scraped_data.get("other_registers"),
             officers=scraped_data.get("officers"),
             events=scraped_data.get("events"),
+            history_timeline=scraped_data.get("history_timeline"),
+            persons_timeline=scraped_data.get("persons_timeline"),
+            marketing_tech=scraped_data.get("marketing_tech"),
+            tab_metrics=scraped_data.get("tab_metrics"),
+            network_links=scraped_data.get("network_links"),
             balance_sheet=scraped_data.get("balance_sheet") or scraped_data.get("balance_sheet_2024"),
             financials=scraped_data.get("financials"),
             ownership=scraped_data.get("ownership"),
+            svg_diagrams=scraped_data.get("svg_diagrams"),
             source_url=request.url,
             crawled_date=datetime.now(UTC),
         )
@@ -134,9 +146,20 @@ async def scrape_company_northdata(company_id: str, request: ScrapeNorthDataRequ
         entry.other_registers = scraped_data.get("other_registers") or entry.other_registers
         entry.officers = scraped_data.get("officers") or entry.officers
         entry.events = scraped_data.get("events") or entry.events
+        if "history_timeline" in scraped_data and scraped_data["history_timeline"] is not None:
+            entry.history_timeline = scraped_data["history_timeline"]
+        if "persons_timeline" in scraped_data and scraped_data["persons_timeline"] is not None:
+            entry.persons_timeline = scraped_data["persons_timeline"]
+        if "marketing_tech" in scraped_data and scraped_data["marketing_tech"] is not None:
+            entry.marketing_tech = scraped_data["marketing_tech"]
+        if "tab_metrics" in scraped_data and scraped_data["tab_metrics"] is not None:
+            entry.tab_metrics = scraped_data["tab_metrics"]
+        if "network_links" in scraped_data and scraped_data["network_links"] is not None:
+            entry.network_links = scraped_data["network_links"]
         entry.balance_sheet = scraped_data.get("balance_sheet") or scraped_data.get("balance_sheet_2024") or entry.balance_sheet
         entry.financials = scraped_data.get("financials") or entry.financials
         entry.ownership = scraped_data.get("ownership") or entry.ownership
+        entry.svg_diagrams = scraped_data.get("svg_diagrams") or entry.svg_diagrams
         entry.source_url = request.url
         entry.crawled_date = datetime.now(UTC)
 
