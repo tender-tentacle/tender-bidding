@@ -14,3 +14,4 @@ pyodbc==5.3.0
 # Azure Blob for original documents (real backend; mock used in dev/tests)
 azure-storage-blob==12.19.0
 azure-monitor-opentelemetry==1.8.9
+lzstring==1.0.4
