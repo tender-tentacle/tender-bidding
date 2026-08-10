@@ -127,7 +127,7 @@ def run_stage4_mhp_matrix(company_name: str, existing_summary: dict | None = Non
 
     solvency_text = solvency.get("solvency_status", "AAA Öffentlicher Haushalt")
     credit_score = solvency.get("credit_score", "AAA")
-    
+
     need_titles = [n["need"] for n in needs if isinstance(n, dict) and "need" in n]
     hiring_titles = [h["title"] for h in hiring if isinstance(h, dict) and "title" in h]
 
