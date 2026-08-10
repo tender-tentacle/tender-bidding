@@ -138,7 +138,7 @@ async def run_stage2_implicit_needs(company_name: str, db: AsyncSession | None =
                 "relevance": "Hoch"
             })
 
-    crawling_url = os.getenv("CRAWLING_URL", "http://tender-crawling:8001")
+    crawling_url = os.getenv("CRAWLING_URL", "http://127.0.0.1:8001")
     scraped_articles = []
 
     try:
@@ -151,7 +151,34 @@ async def run_stage2_implicit_needs(company_name: str, db: AsyncSession | None =
             if res.status_code == 200:
                 scraped_articles = res.json()
     except Exception as e:
-        logger.warning(f"Could not trigger Tagesschau scraper for {company_name}: {e}")
+        logger.warning(f"Could not trigger Tagesschau scraper via crawling service for {company_name}: {e}")
+
+    # Direct open-data Tagesschau Search API fallback (https://www.tagesschau.de/api2u/search/)
+    if not scraped_articles and company_name:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                res = await client.get(
+                    "https://www.tagesschau.de/api2u/search/",
+                    params={"searchText": company_name, "resultPage": 0, "pageSize": 30},
+                    timeout=10.0
+                )
+                if res.status_code == 200:
+                    news_data = res.json()
+                    raw_news = news_data.get("searchResults", []) or news_data.get("news", [])
+                    for item in raw_news:
+                        title = item.get("title") or ""
+                        details = item.get("firstSentence") or item.get("teaserImage", {}).get("title", "")
+                        share_url = item.get("detailsweb") or item.get("shareURL") or ""
+                        pub_str = item.get("date") or ""
+                        if title:
+                            scraped_articles.append({
+                                "title": title,
+                                "link": share_url,
+                                "content": details,
+                                "published_at": pub_str
+                            })
+        except Exception as direct_e:
+            logger.warning(f"Direct Tagesschau API call failed for {company_name}: {direct_e}")
 
     scandal_keywords = ["insolvenz", "ermittlungen", "skandal", "streik", "verluste", "klage", "strafverfahren", "korruption"]
     scandal_flags = []
@@ -165,11 +192,11 @@ async def run_stage2_implicit_needs(company_name: str, db: AsyncSession | None =
             scandal_flags.append(f"Presse-Warnung (Tagesschau): '{title}'")
 
     if scandal_flags:
-        sentiment = f"Kritisch ({len(scandal_flags)} Warnungen)"
+        sentiment = f"Kritisch / Pressemeldungen mit Risiko-Signalen ({len(scandal_flags)} Warnungen)"
     elif scraped_articles:
-        sentiment = f"Neutral / Positiv ({len(scraped_articles)} Artikel in 30 Tagen)"
+        sentiment = f"Überwiegend Positiv / Neutral ({len(scraped_articles)} Artikel im 30-Tage Fenster)"
     else:
-        sentiment = ""
+        sentiment = "Keine auffälligen Pressemeldungen in den letzten 30 Tagen (Tagesschau Scan)"
 
     return {
         "active_hiring_radar": hiring_radar,
@@ -180,7 +207,7 @@ async def run_stage2_implicit_needs(company_name: str, db: AsyncSession | None =
             "articles_found": len(scraped_articles),
             "reputation_sentiment": sentiment,
             "scandal_press_flags": scandal_flags,
-            "recent_headlines": recent_headlines[:3]
+            "recent_headlines": recent_headlines[:3] if recent_headlines else [f"Keine Pressemeldungen für {company_name} im 30-Tage Fenster verzeichnet"]
         }
     }
 
