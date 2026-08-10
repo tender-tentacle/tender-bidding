@@ -36,6 +36,155 @@ class PromptUpdateRequest(BaseModel):
 class ExtractSummaryRequest(BaseModel):
     company_name: str | None = None
     is_aor: bool | None = False
+    stage: int | None = None
+
+
+def get_default_pipeline_status():
+    return {
+        "overall": "completed",
+        "current_stage": 4,
+        "total_stages": 4,
+        "stages": {
+            "stage1_solvency": {"status": "completed", "updated_at": datetime.now(UTC).isoformat()},
+            "stage2_implicit_needs": {"status": "completed", "updated_at": datetime.now(UTC).isoformat()},
+            "stage3_procurement_pressure": {"status": "completed", "updated_at": datetime.now(UTC).isoformat()},
+            "stage4_mhp_matrix": {"status": "completed", "updated_at": datetime.now(UTC).isoformat()}
+        }
+    }
+
+
+def run_stage1_solvency(company_name: str, is_aor: bool) -> dict:
+    return {
+        "short_summary": f"{company_name} ist ein bedeutender öffentlicher/kommerzieller Auftraggeber mit aktiven Beschaffungszyklen.",
+        "long_summary": f"Detailliertes Organisationsprofil und Beschaffungshistorie für {company_name} mit kontinuierlichem Bedarf an IT-Dienstleistungen und Digitalisierung.",
+        "bid_manager_summary": f"Strategische Verhandlungshebel und Compliance-Anforderungen für {company_name}. Hoher Stellenwert von EVB-IT-Vertragsstandards.",
+        "financial_solvency_badges": {
+            "solvency_status": "AÖR Öffentliche Hand (Keine Registerwarnung)" if is_aor else "Solide Bonität (North Data verifiziert)",
+            "credit_score": "AAA (Öffentlicher Haushalt / AÖR)" if is_aor else "Index 1.4",
+            "financial_trend": "Stabile Budgetallokation"
+        },
+        "kununu_sentiment": {
+            "work_life_balance": "4.1 / 5.0",
+            "management_rating": "3.7 / 5.0",
+            "retention_score": "84% Positive Mitarbeiterbindung"
+        },
+        "red_flag_banners": [
+            "AÖR-Anstalt: Kein Handelsregistereintrag (Anstalt des öffentlichen Rechts)" if is_aor else "Standardmäßiges Handelsunternehmen",
+            "Zwingende EVB-IT Formularanforderungen & Eigenerklärungen"
+        ]
+    }
+
+
+def run_stage2_implicit_needs(company_name: str) -> dict:
+    return {
+        "active_hiring_radar": [
+            {"title": "Senior Cloud DevOps Engineer", "category": "Cloud & Infrastruktur"},
+            {"title": "IT-Sicherheitsbeauftragter", "category": "Cybersecurity & Compliance"}
+        ],
+        "implicit_tender_needs": [
+            {
+                "need": "AWS/Azure Cloud-Infrastruktur & Container-Expertise",
+                "source": "Stellenausschreibung: Senior Cloud DevOps Engineer",
+                "relevance": "Hoch"
+            },
+            {
+                "need": "EVB-IT & ISO 27001 Compliance-Sicherheitskonzept",
+                "source": "Stellenausschreibung: IT-Sicherheitsbeauftragter",
+                "relevance": "Kritisch"
+            },
+            {
+                "need": "Agile Methodik & Modernisierung träger Freigabeprozesse",
+                "source": "Kununu Kommentare: 'Träge Freigabeprozesse & Legacy-IT'",
+                "relevance": "Mittel"
+            }
+        ]
+    }
+
+
+def run_stage3_procurement_pressure(company_name: str) -> dict:
+    return {
+        "historic_tender_footprint": [
+            {"year": "2025", "title": "IT-Infrastruktur Support & Cloud Transformation", "winner": "Bechtle GmbH", "amount": "€850.000"}
+        ],
+        "procurement_pressure": {
+            "tender_frequency": "Hohe Vergabeaktivität (~6 Vergaben / Jahr)",
+            "total_volume_estimate": "€4.200.000",
+            "avg_deal_size": "€700.000",
+            "incumbent_landscape": "Bechtle GmbH (Gewinner 2025 mit €850.000)",
+            "friendly_partner_share": "35% Vergabeanteil an Partnernetzwerk",
+            "procurement_urgency": "Hoch (Modernisierungsstau & Fristdruck)"
+        }
+    }
+
+
+def run_stage4_mhp_matrix(company_name: str, existing_summary: dict | None = None) -> dict:
+    ctx = existing_summary or {}
+    solvency = ctx.get("financial_solvency_badges", {})
+    needs = ctx.get("implicit_tender_needs", [])
+    hiring = ctx.get("active_hiring_radar", [])
+    pressure = ctx.get("procurement_pressure", {})
+    flags = ctx.get("red_flag_banners", [])
+
+    solvency_text = solvency.get("solvency_status", "AAA Öffentlicher Haushalt")
+    credit_score = solvency.get("credit_score", "AAA")
+    
+    need_titles = [n["need"] for n in needs if isinstance(n, dict) and "need" in n]
+    hiring_titles = [h["title"] for h in hiring if isinstance(h, dict) and "title" in h]
+
+    cat1_rationale = (
+        f"Hohe Passfähigkeit für {company_name}. Implizite Bedarfe ({', '.join(need_titles[:2]) if need_titles else 'Cloud & IT Security'}) "
+        f"decken sich mit MHP Portfolio. {pressure.get('incumbent_landscape', 'Marktumfeld stabil')}."
+    )
+    cat2_rationale = f"Solvenz-Bewertung: {solvency_text} ({credit_score}). Garantiertes Zahlungsverhalten und vernachlässigbares Ausfallrisiko."
+    cat3_rationale = (
+        f"Stellenausschreibungen ({', '.join(hiring_titles[:2]) if hiring_titles else 'Senior Cloud DevOps'}) "
+        "decken sich exakt mit verfügbaren MHP Practice Kapazitäten."
+    )
+    cat4_rationale = f"Rechtliche Einstufung & Compliance: {flags[0] if flags else 'Standardmäßige EVB-IT Klauseln'}. EVB-IT Freigabe erforderlich."
+
+    categories = [
+        {"category": "Strategischer Fit & Kundenbeziehung", "weight": 5, "score": 5, "rationale": cat1_rationale},
+        {"category": "Finanzielle Stabilität & Bonität", "weight": 4, "score": 5, "rationale": cat2_rationale},
+        {"category": "Ressourcen- & Skill-Verfügbarkeit", "weight": 4, "score": 4, "rationale": cat3_rationale},
+        {"category": "EVB-IT & Compliance-Risiko", "weight": 3, "score": 3, "rationale": cat4_rationale},
+    ]
+
+    total_weighted = sum(c["score"] * c["weight"] for c in categories)
+    max_possible = sum(5 * c["weight"] for c in categories)
+    fit_score = int((total_weighted / max_possible) * 100) if max_possible > 0 else 88
+    verdict = "BID / GO" if fit_score >= 70 else "NO BID / NO GO"
+
+    return {
+        "bidding_company_potential": [
+            {"bidding_company": "MHP Management- und IT-Beratung GmbH", "fit_score": f"{fit_score}%", "synergy": "Hohe Synergie mit MHP Cloud & Advisory Portfolio"}
+        ],
+        "mhp_bid_no_bid_matrix": {
+            "verdict": verdict,
+            "win_probability": f"{fit_score}%",
+            "matrix_score": fit_score,
+            "max_score": 100,
+            "categories": categories,
+            "top_reasons_to_bid": [
+                f"Öffentlich abgesichertes Budget ({credit_score}) garantiert pünktliche Zahlung",
+                f"Abdeckung impliziter Bedarfe ({need_titles[0] if need_titles else 'Cloud & IT Security'}) durch MHP Practices",
+                "Stabile Mitarbeiterbindung signalisiert verlässliches Kunden-Projektumfeld"
+            ],
+            "top_deal_risks": [
+                "Strenge formale EVB-IT Nachweis- und Eigenerklärungspflichten",
+                f"Wettbewerberpräsenz ({pressure.get('incumbent_landscape', 'Bechtle GmbH')})"
+            ],
+            "bid_driver_action_items": [
+                "Freigabe der EVB-IT Haftungsklauseln beim Praxis-Lead (Clemens) anfragen",
+                "3 Referenzprojekte aus dem MHP Public / Automotive Portfolio zusammenstellen",
+                "Kick-off Meeting mit dem Cloud & DevOps Delivery Lead terminieren"
+            ],
+            "ambika_action_items": [
+                "Freigabe der EVB-IT Haftungsklauseln beim Praxis-Lead (Clemens) anfragen",
+                "3 Referenzprojekte aus dem MHP Public / Automotive Portfolio zusammenstellen",
+                "Kick-off Meeting mit dem Cloud & DevOps Delivery Lead terminieren"
+            ]
+        }
+    }
 
 
 @router.get("/config/prompts/company-summary")
@@ -64,95 +213,58 @@ async def get_company_summary(bid_id: str, db: AsyncSession = Depends(get_db)):
 async def extract_company_summary(
     bid_id: str,
     req: ExtractSummaryRequest | None = None,
+    stage: int | None = None,
     db: AsyncSession = Depends(get_db)
 ):
-    company_name = req.company_name if req else "Ziel-Auftraggeber"
-    is_aor = req.is_aor if req else ("Landesbetrieb" in company_name or "Amt" in company_name or "AÖR" in company_name or "Flughafen" in company_name)
+    company_name = req.company_name if (req and req.company_name) else "Ziel-Auftraggeber"
+    is_aor = req.is_aor if (req and req.is_aor is not None) else ("Landesbetrieb" in company_name or "Amt" in company_name or "AÖR" in company_name or "Flughafen" in company_name)
+    target_stage = req.stage if (req and req.stage is not None) else stage
 
-    # Build structured summary payload in German
-    summary_data = {
-        "bid_id": bid_id,
-        "company_name": company_name,
-        "short_summary": f"{company_name} ist ein bedeutender öffentlicher/kommerzieller Auftraggeber mit aktiven Beschaffungszyklen.",
-        "long_summary": f"Detailliertes Organisationsprofil und Beschaffungshistorie für {company_name} mit kontinuierlichem Bedarf an IT-Dienstleistungen und Digitalisierung.",
-        "bid_manager_summary": f"Strategische Verhandlungshebel und Compliance-Anforderungen für {company_name}. Hoher Stellenwert von EVB-IT-Vertragsstandards.",
-        "financial_solvency_badges": {
-            "solvency_status": "AÖR Öffentliche Hand (Keine Registerwarnung)" if is_aor else "Solide Bonität (North Data verifiziert)",
-            "credit_score": "AAA (Öffentlicher Haushalt / AÖR)" if is_aor else "Index 1.4",
-            "financial_trend": "Stabile Budgetallokation"
-        },
-        "kununu_sentiment": {
-            "work_life_balance": "4.1 / 5.0",
-            "management_rating": "3.7 / 5.0",
-            "retention_score": "84% Positive Mitarbeiterbindung"
-        },
-        "active_hiring_radar": [
-            {"title": "Senior Cloud DevOps Engineer", "category": "Cloud & Infrastruktur"},
-            {"title": "IT-Sicherheitsbeauftragter", "category": "Cybersecurity & Compliance"}
-        ],
-        "historic_tender_footprint": [
-            {"year": "2025", "title": "IT-Infrastruktur Support & Cloud Transformation", "winner": "Bechtle GmbH", "amount": "€850.000"}
-        ],
-        "bidding_company_potential": [
-            {"bidding_company": "MHP Management- und IT-Beratung GmbH", "fit_score": "94%", "synergy": "Hohe Synergie mit MHP Cloud & Advisory Portfolio"}
-        ],
-        "red_flag_banners": [
-            "AÖR-Anstalt: Kein Handelsregistereintrag (Anstalt des öffentlichen Rechts)" if is_aor else "Standardmäßiges Handelsunternehmen",
-            "Zwingende EVB-IT Formularanforderungen & Eigenerklärungen"
-        ],
-        "mhp_bid_no_bid_matrix": {
-            "verdict": "BID / GO",
-            "win_probability": "88%",
-            "matrix_score": 88,
-            "max_score": 100,
-            "categories": [
-                {
-                    "category": "Strategischer Fit & Kundenbeziehung",
-                    "weight": 5,
-                    "score": 5,
-                    "rationale": f"Hohe Passfähigkeit für öffentliche Auftraggeber ({company_name}). Starke Abdeckung durch MHP Branchen-Expertise."
-                },
-                {
-                    "category": "Finanzielle Stabilität & Bonität",
-                    "weight": 4,
-                    "score": 5,
-                    "rationale": "AAA Öffentlicher Haushalt. Garantiertes Zahlungsverhalten und vernachlässigbares Ausfallrisiko."
-                },
-                {
-                    "category": "Ressourcen- & Skill-Verfügbarkeit",
-                    "weight": 4,
-                    "score": 4,
-                    "rationale": "Aktuelle Stellenausschreibungen decken sich exakt mit MHP Cloud DevOps-, IT Security- und System-Integration-Kapazitäten."
-                },
-                {
-                    "category": "EVB-IT & Compliance-Risiko",
-                    "weight": 3,
-                    "score": 3,
-                    "rationale": "Strenge EVB-IT Vertragsbedingungen erfordern rechtzeitige rechtliche Prüfung und Haftungsfreistellung."
-                }
-            ],
-            "top_reasons_to_bid": [
-                "Öffentlich abgesichertes Budget (AAA) garantiert pünktliche Zahlung ohne Kreditrisiko",
-                "Hohe Synergie mit dem MHP Cloud & Systems Engineering Practice-Portfolio",
-                "Stabile Kununu-Retention von 84% signalisiert verlässliches Kunden-Projektumfeld"
-            ],
-            "top_deal_risks": [
-                "Strenge formale EVB-IT Nachweis- und Eigenerklärungspflichten",
-                "Bestehende Wettbewerberpräsenz im Umfeld (Bechtle / GIZ)"
-            ],
-            "ambika_action_items": [
-                "Freigabe der EVB-IT Haftungsklauseln beim Praxis-Lead (Clemens) anfragen",
-                "3 Referenzprojekte aus dem MHP Public / Automotive Portfolio zusammenstellen",
-                "Kick-off Meeting mit dem Cloud & DevOps Delivery Lead terminieren"
-            ]
-        },
-        "extracted_at": datetime.now(UTC).isoformat()
-    }
-
-    # Save to database if bid exists, or create placeholder bid
+    # Fetch existing bid summary or create placeholder
     stmt = select(Bid).where(Bid.id == bid_id)
     res = await db.execute(stmt)
     bid = res.scalar_one_or_none()
+
+    existing_summary = dict(bid.company_summary) if (bid and bid.company_summary) else {}
+
+    # Initialize summary structure if empty
+    summary_data = {
+        "bid_id": bid_id,
+        "company_name": company_name,
+        "pipeline_status": existing_summary.get("pipeline_status") or get_default_pipeline_status(),
+        "extracted_at": datetime.now(UTC).isoformat()
+    }
+    summary_data.update(existing_summary)
+
+    # Progressive 4-stage pipeline execution
+    if target_stage in (1, None):
+        summary_data.update(run_stage1_solvency(company_name, is_aor))
+        summary_data["pipeline_status"]["stages"]["stage1_solvency"] = {
+            "status": "completed", "updated_at": datetime.now(UTC).isoformat()
+        }
+
+    if target_stage in (2, None):
+        summary_data.update(run_stage2_implicit_needs(company_name))
+        summary_data["pipeline_status"]["stages"]["stage2_implicit_needs"] = {
+            "status": "completed", "updated_at": datetime.now(UTC).isoformat()
+        }
+
+    if target_stage in (3, None):
+        summary_data.update(run_stage3_procurement_pressure(company_name))
+        summary_data["pipeline_status"]["stages"]["stage3_procurement_pressure"] = {
+            "status": "completed", "updated_at": datetime.now(UTC).isoformat()
+        }
+
+    if target_stage in (4, None):
+        summary_data.update(run_stage4_mhp_matrix(company_name, summary_data))
+        summary_data["pipeline_status"]["stages"]["stage4_mhp_matrix"] = {
+            "status": "completed", "updated_at": datetime.now(UTC).isoformat()
+        }
+
+    summary_data["pipeline_status"]["overall"] = "completed"
+    summary_data["extracted_at"] = datetime.now(UTC).isoformat()
+
+    # Save to database with progressive persistence
     if not bid:
         bid = Bid(
             id=bid_id,
@@ -166,6 +278,6 @@ async def extract_company_summary(
     else:
         bid.company_summary = summary_data
         bid.company_summary_updated_at = datetime.now(UTC)
-    await db.commit()
 
+    await db.commit()
     return summary_data

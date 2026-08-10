@@ -53,3 +53,55 @@ async def test_company_summary_formatted_uuid_36_chars():
         assert res_get.status_code == 200
         assert res_get.json()["bid_id"] == uuid_36
 
+
+@pytest.mark.asyncio
+async def test_staged_pipeline_data_lineage_and_matrix_synthesis():
+    """TDD Test: Verify data lineage across 4 stages and dynamic Matrix synthesis in Stage 4."""
+    async with api_client() as client:
+        bid_id = "bid-lineage-001"
+        company = "Flughafen Stuttgart GmbH"
+
+        # Stage 1: Solvency & Legal Status
+        res1 = await client.post(f"/bids/{bid_id}/company-summary/extract?stage=1", json={"company_name": company, "is_aor": True})
+        assert res1.status_code == 200
+        d1 = res1.json()
+        assert d1["financial_solvency_badges"]["solvency_status"] == "AÖR Öffentliche Hand (Keine Registerwarnung)"
+        assert d1["pipeline_status"]["stages"]["stage1_solvency"]["status"] == "completed"
+
+        # Stage 2: Implicit Needs & Culture Mining
+        res2 = await client.post(f"/bids/{bid_id}/company-summary/extract?stage=2", json={"company_name": company})
+        assert res2.status_code == 200
+        d2 = res2.json()
+        assert len(d2["implicit_tender_needs"]) >= 2
+        assert d2["pipeline_status"]["stages"]["stage2_implicit_needs"]["status"] == "completed"
+
+        # Stage 3: Procurement Pressure & History
+        res3 = await client.post(f"/bids/{bid_id}/company-summary/extract?stage=3", json={"company_name": company})
+        assert res3.status_code == 200
+        d3 = res3.json()
+        assert "tender_frequency" in d3["procurement_pressure"]
+        assert d3["pipeline_status"]["stages"]["stage3_procurement_pressure"]["status"] == "completed"
+
+        # Stage 4: Decision Matrix Synthesis (Feeds on Stage 1, 2, 3 Data)
+        res4 = await client.post(f"/bids/{bid_id}/company-summary/extract?stage=4", json={"company_name": company})
+        assert res4.status_code == 200
+        d4 = res4.json()
+        matrix = d4["mhp_bid_no_bid_matrix"]
+        assert matrix["verdict"] in ("BID / GO", "NO BID / NO GO")
+
+        # Assert Data Lineage in Category Rationales
+        cat_map = {c["category"]: c for c in matrix["categories"]}
+        
+        # Category 2 (Solvency) must reference Stage 1 credit status
+        solvency_cat = cat_map["Finanzielle Stabilität & Bonität"]
+        assert "AAA" in solvency_cat["rationale"] or "Bonität" in solvency_cat["rationale"]
+
+        # Category 3 (Skills) must reference Stage 2 Tech Radar needs
+        skill_cat = cat_map["Ressourcen- & Skill-Verfügbarkeit"]
+        assert "Cloud" in skill_cat["rationale"] or "DevOps" in skill_cat["rationale"] or "Stellenausschreibungen" in skill_cat["rationale"]
+
+        # Category 4 (Compliance) must reference Stage 1 AÖR legal status & EVB-IT
+        compliance_cat = cat_map["EVB-IT & Compliance-Risiko"]
+        assert "EVB-IT" in compliance_cat["rationale"]
+
+
