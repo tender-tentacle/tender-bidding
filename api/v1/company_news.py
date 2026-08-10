@@ -144,8 +144,8 @@ async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
         logger.info(f"No news articles found for {company_id}")
         return news_entries
 
-    # Step 5: Deduplicate, filter to last 365 days, and sort by published date descending
-    cutoff_date = (datetime.now(UTC) - timedelta(days=365)).strftime("%Y-%m-%d")
+    # Step 5: Deduplicate, filter to last 30 days (Tagesschau & News scan), and sort by published date descending
+    cutoff_date = (datetime.now(UTC) - timedelta(days=30)).strftime("%Y-%m-%d")
     seen_hashes = set()
     filtered_articles = []
 
