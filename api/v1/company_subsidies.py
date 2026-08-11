@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 try:
     from core.scrapers.subsidies.govdata_subsidies.on_the_fly_scraper import (
