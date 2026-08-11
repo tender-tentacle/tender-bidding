@@ -72,18 +72,22 @@ body {
   position: sticky;
   top: 0;
   z-index: 1000;
+  max-width: 100vw;
+  box-sizing: border-box;
 }
 .tt-header-left {
   display: flex;
   align-items: center;
   gap: 24px;
   min-width: 0;
+  flex: 1;
 }
 .tt-brand {
   display: flex;
   align-items: center;
   gap: 12px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .tt-brand-name {
   font-weight: 700;
@@ -98,6 +102,13 @@ body {
 .tt-nav {
   display: flex;
   gap: 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  min-width: 0;
+}
+.tt-nav::-webkit-scrollbar {
+  display: none;
 }
 .tt-nav a {
   text-decoration: none;
@@ -110,6 +121,8 @@ body {
   font-weight: 500;
   border-bottom: 2px solid transparent;
   transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .tt-nav a:hover {
   color: #fff;
@@ -124,6 +137,30 @@ body {
   display: flex;
   align-items: center;
   gap: 16px;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+@media (max-width: 1024px) {
+  .tt-header {
+    padding: 0 16px;
+  }
+  .tt-header-left {
+    gap: 12px;
+  }
+  .tt-nav a {
+    padding: 0 10px;
+    font-size: 12px;
+  }
+}
+@media (max-width: 640px) {
+  .tt-brand-name .thin {
+    display: none;
+  }
+}
+@media (max-width: 480px) {
+  .tt-online span:not(.dot) {
+    display: none;
+  }
 }
 .tt-env {
   padding: 4px 10px;
