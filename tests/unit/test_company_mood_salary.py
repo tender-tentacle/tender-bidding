@@ -7,7 +7,7 @@ from models.bid import CompanyMood
 @pytest.mark.asyncio
 async def test_company_mood_persists_and_returns_salary_fields():
     """Verify company mood API and ORM model process salary satisfaction and benefits metadata."""
-    from api.v1.company_mood import get_company_mood
+    from api.v1.company_mood import ScrapeMoodRequest, manual_scrape_company_mood
 
     mock_db = AsyncMock()
 
@@ -72,7 +72,7 @@ async def test_company_mood_persists_and_returns_salary_fields():
         patch("httpx.AsyncClient.post", AsyncMock(side_effect=mock_post)),
         patch("httpx.AsyncClient.get", AsyncMock(return_value=MagicMock(status_code=404))),
     ):
-        res = await get_company_mood("GIZ", mock_db)
+        res = await manual_scrape_company_mood("GIZ", ScrapeMoodRequest(url="https://www.kununu.com/de/giz", force=True), mock_db)
 
         assert mock_db.add.call_count == 1
         added_mood = mock_db.add.call_args[0][0]

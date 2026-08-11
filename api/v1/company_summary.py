@@ -18,6 +18,14 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+try:
+    from core.scrapers.subsidies.govdata_subsidies.on_the_fly_scraper import (
+        scrape_company_subsidies_on_the_fly,
+    )
+except ImportError:
+    def scrape_company_subsidies_on_the_fly(company_name: str) -> list[dict]:
+        return []
+
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["company_summary"])
 
@@ -198,9 +206,12 @@ async def run_stage2_implicit_needs(company_name: str, db: AsyncSession | None =
     else:
         sentiment = "Keine auffälligen Pressemeldungen in den letzten 30 Tagen (Tagesschau Scan)"
 
+    subsidies = scrape_company_subsidies_on_the_fly(company_name)
+
     return {
         "active_hiring_radar": hiring_radar,
         "implicit_tender_needs": implicit_needs,
+        "subsidies_grants_radar": subsidies,
         "tagesschau_news_scan": {
             "source_api": "https://tagesschau.api.bund.dev/",
             "scan_window_days": 30,
@@ -296,6 +307,7 @@ def run_stage4_mhp_matrix(company_name: str, existing_summary: dict | None = Non
     hiring = ctx.get("active_hiring_radar", [])
     pressure = ctx.get("procurement_pressure", {})
     flags = ctx.get("red_flag_banners", [])
+    subsidies = ctx.get("subsidies_grants_radar", [])
 
     solvency_text = solvency.get("solvency_status", "")
     credit_score = solvency.get("credit_score", "")
@@ -309,15 +321,18 @@ def run_stage4_mhp_matrix(company_name: str, existing_summary: dict | None = Non
     need_str = ", ".join(need_titles[:2]) if need_titles else ""
     incumbent_str = pressure.get("incumbent_landscape", "")
 
+    subsidy_count = len(subsidies) if isinstance(subsidies, list) else 0
+    subsidy_str = f"Verifizierte Fördermittel ({subsidy_count} Zuwendungen)" if subsidy_count > 0 else ""
+
     cat1_rationale = f"Strategischer Fit für {company_name}. {need_str} {sentiment_label} {incumbent_str}".strip()
-    cat2_rationale = f"Solvenz: {solvency_text} {credit_score}".strip()
+    cat2_rationale = f"Solvenz: {solvency_text} {credit_score} {subsidy_str}".strip()
     cat3_rationale = f"Stellenausschreibungen: {', '.join(hiring_titles[:2])}" if hiring_titles else ""
-    cat4_rationale = f"Compliance: {flags[0]}" if flags else ""
+    cat4_rationale = f"Compliance: {flags[0]}" if flags else ("Staatliche Zuwendungsprüfung bestanden" if subsidy_count > 0 else "Normales Risikoprofil")
 
     cat1_score = 5 if need_titles else 3
-    cat2_score = 5 if ("AAA" in credit_score or "Verifiziert" in credit_score or "AÖR" in solvency_text) else 3
+    cat2_score = 5 if ("AAA" in credit_score or "Verifiziert" in credit_score or "AÖR" in solvency_text or subsidy_count > 0) else 3
     cat3_score = 4 if hiring_titles else 3
-    cat4_score = 4 if not any("ACHTUNG" in f or "Insolvenz" in f for f in flags) else 2
+    cat4_score = 5 if subsidy_count > 0 and not any("ACHTUNG" in f or "Insolvenz" in f for f in flags) else (4 if not any("ACHTUNG" in f or "Insolvenz" in f for f in flags) else 2)
 
     categories = [
         {"category": "Strategischer Fit & Kundenbeziehung", "weight": 5, "score": cat1_score, "rationale": cat1_rationale},
@@ -334,6 +349,8 @@ def run_stage4_mhp_matrix(company_name: str, existing_summary: dict | None = Non
     reasons = []
     if solvency_text:
         reasons.append(f"Solvenzstatus ({solvency_text})")
+    if subsidy_count > 0:
+        reasons.append(f"Staatliche Fördermittel-Zuwendungen ({subsidy_count} verifizierte Zuwendungen)")
     if need_titles:
         reasons.append(f"Implizite Bedarfe ({need_str})")
 

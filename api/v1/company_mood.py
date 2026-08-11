@@ -122,7 +122,7 @@ async def get_company_kununu_jobs(company_id: str, db: AsyncSession = Depends(ge
 async def get_company_mood(company_id: str, db: AsyncSession = Depends(get_db)):
     """
     Get cached employee mood reviews for a specific company.
-    If no data is cached, it will trigger an on-the-fly scrape in crawling ms.
+    Returns cached DB records without triggering automatic live scraping or guessing URLs.
     """
     clean_id = company_id.split(",")[0].split("(")[0].strip().lower()
     short_id = re.sub(r"\b(GmbH|AG|SE|Co\.|KG|Ltd\.|Inc\.|Corp\.)\b", "", clean_id, flags=re.IGNORECASE).strip()
@@ -134,29 +134,20 @@ async def get_company_mood(company_id: str, db: AsyncSession = Depends(get_db)):
     )
     result = await db.execute(stmt)
     records = result.scalars().all()
-    if records:
-        latest_crawl = max((r.crawled_date for r in records if r.crawled_date), default=None)
-        if latest_crawl:
-            if latest_crawl.tzinfo is None:
-                latest_crawl = latest_crawl.replace(tzinfo=UTC)
-            age_days = (datetime.now(UTC) - latest_crawl).days
-            if age_days < 30:
-                logger.info(f"Returning cached Kununu data for '{company_id}' (age: {age_days}d < 30d).")
-                return records
-
-    url = f"https://www.kununu.com/de/{clean_id.replace(' ', '-')}"
-    dummy_req = ScrapeMoodRequest(url=url)
-    return await manual_scrape_company_mood(company_id=company_id, request=dummy_req, db=db)
-
+    return records
 
 
 @router.post("/company/{company_id:path}/mood/scrape", response_model=list[CompanyMoodSchema])
 async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest, db: AsyncSession = Depends(get_db)):
     """
-    Manually override and scrape Kununu using a specific URL.
-    Saves the URL to distributing MS and scrapes data.
-    If cached data exists and was scraped within the last 30 days, scraping is skipped to save crawler resources unless force=True.
+    Manually scrape Kununu using a specific, validated URL.
+    Requires an explicit kununu.com URL. Never scrapes without a URL.
     """
+    if not request.url or not isinstance(request.url, str) or "kununu.com" not in request.url.lower():
+        raise HTTPException(
+            status_code=400,
+            detail="A valid Kununu URL (e.g. https://www.kununu.com/de/company-name) is required to trigger Kununu scanner."
+        )
     logger.info(f"Manual Kununu scrape requested for {company_id} with URL {request.url}")
 
     clean_id = company_id.split(",")[0].split("(")[0].strip().lower()

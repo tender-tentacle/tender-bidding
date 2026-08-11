@@ -134,12 +134,12 @@ async def scrape_company_northdata(company_id: str, request: ScrapeNorthDataRequ
         )
         db.add(entry)
     else:
-        entry.company_name = scraped_data.get("company_name") or entry.company_name
+        entry.company_name = scraped_data.get("company_name") if scraped_data.get("company_name") is not None else entry.company_name
         entry.address = scraped_data.get("address") or entry.address
         entry.founding_date = scraped_data.get("founding_date") or entry.founding_date
-        entry.register_court = scraped_data.get("register_court") or entry.register_court
-        entry.register_number = scraped_data.get("register_number") or entry.register_number
-        entry.euid = scraped_data.get("euid") or entry.euid
+        entry.register_court = scraped_data.get("register_court")
+        entry.register_number = scraped_data.get("register_number")
+        entry.euid = scraped_data.get("euid")
         entry.lei_code = scraped_data.get("lei_code") or entry.lei_code
         entry.business_purpose = scraped_data.get("business_purpose") or entry.business_purpose
         entry.former_names = scraped_data.get("former_names") or entry.former_names

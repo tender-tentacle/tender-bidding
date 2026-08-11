@@ -36,8 +36,8 @@ async def test_fresh_data_returned_without_scrape():
 
 
 @pytest.mark.asyncio
-async def test_stale_data_triggers_scrape():
-    """If DB records are older than 30 days, trigger manual_scrape_company_mood."""
+async def test_get_company_mood_never_triggers_automatic_scrape():
+    """Verify get_company_mood only reads cached records and NEVER triggers manual_scrape_company_mood automatically."""
     mock_db = AsyncMock()
     old_date = datetime.now(UTC) - timedelta(days=35)
 
@@ -54,11 +54,11 @@ async def test_stale_data_triggers_scrape():
     mock_db.execute.return_value = mock_result
 
     with patch("api.v1.company_mood.manual_scrape_company_mood", new_callable=AsyncMock) as mock_scrape:
-        mock_scrape.return_value = [record]
-
         records = await get_company_mood("Toll Collect GmbH", db=mock_db)
 
-        mock_scrape.assert_called_once()
+        assert len(records) == 1
+        assert records[0].title == "Old Review"
+        mock_scrape.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -77,3 +77,24 @@ async def test_delete_company_mood():
     assert res["company_id"] == "Toll Collect GmbH"
     assert res["deleted_moods"] == 2
     assert mock_db.commit.called
+
+
+@pytest.mark.asyncio
+async def test_manual_scrape_requires_valid_kununu_url():
+    """Verify manual_scrape_company_mood rejects requests without a valid kununu.com URL with HTTP 400."""
+    from api.v1.company_mood import ScrapeMoodRequest, manual_scrape_company_mood
+    from fastapi import HTTPException
+
+    mock_db = AsyncMock()
+
+    # 1. Missing URL
+    with pytest.raises(HTTPException) as exc_info:
+        await manual_scrape_company_mood("Toll Collect GmbH", ScrapeMoodRequest(url=""), db=mock_db)
+    assert exc_info.value.status_code == 400
+    assert "valid Kununu URL" in exc_info.value.detail
+
+    # 2. Non-kununu URL
+    with pytest.raises(HTTPException) as exc_info2:
+        await manual_scrape_company_mood("Toll Collect GmbH", ScrapeMoodRequest(url="https://google.com"), db=mock_db)
+    assert exc_info2.value.status_code == 400
+    assert "valid Kununu URL" in exc_info2.value.detail
