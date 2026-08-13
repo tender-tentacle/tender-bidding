@@ -274,7 +274,8 @@ async def run_stage2_implicit_needs(company_name: str, db: AsyncSession | None =
     # Direct open-data Tagesschau Search API fallback (https://www.tagesschau.de/api2u/search/)
     if not scraped_articles and company_name:
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+            async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
                 res = await client.get(
                     "https://www.tagesschau.de/api2u/search/",
                     params={"searchText": company_name, "resultPage": 0, "pageSize": 30},
@@ -285,9 +286,9 @@ async def run_stage2_implicit_needs(company_name: str, db: AsyncSession | None =
                     raw_news = news_data.get("searchResults", []) or news_data.get("news", [])
                     for item in raw_news:
                         title = item.get("title") or ""
-                        details = item.get("firstSentence") or item.get("teaserImage", {}).get("title", "")
-                        share_url = item.get("detailsweb") or item.get("shareURL") or ""
-                        pub_str = item.get("date") or ""
+                        details = item.get("firstSentence") or item.get("teaserImage", {}).get("title") or item.get("teaserImage", {}).get("alt") or ""
+                        share_url = item.get("detailsweb") or item.get("shareURL") or item.get("url") or ""
+                        pub_str = item.get("date") or item.get("sophoraCreated") or ""
                         if title:
                             scraped_articles.append({
                                 "title": title,
@@ -312,9 +313,9 @@ async def run_stage2_implicit_needs(company_name: str, db: AsyncSession | None =
     if scandal_flags:
         sentiment = f"Kritisch / Pressemeldungen mit Risiko-Signalen ({len(scandal_flags)} Warnungen)"
     elif scraped_articles:
-        sentiment = f"Überwiegend Positiv / Neutral ({len(scraped_articles)} Artikel im 30-Tage Fenster)"
+        sentiment = f"Überwiegend Positiv / Neutral ({len(scraped_articles)} Artikel im 2-Jahre Fenster)"
     else:
-        sentiment = "Keine auffälligen Pressemeldungen in den letzten 30 Tagen (Tagesschau Scan)"
+        sentiment = "Keine auffälligen Pressemeldungen in den letzten 2 Jahren (Tagesschau Scan)"
 
     subsidies = scrape_company_subsidies_on_the_fly(company_name)
 
@@ -324,11 +325,11 @@ async def run_stage2_implicit_needs(company_name: str, db: AsyncSession | None =
         "subsidies_grants_radar": subsidies,
         "tagesschau_news_scan": {
             "source_api": "https://tagesschau.api.bund.dev/",
-            "scan_window_days": 30,
+            "scan_window_days": 730,
             "articles_found": len(scraped_articles),
             "reputation_sentiment": sentiment,
             "scandal_press_flags": scandal_flags,
-            "recent_headlines": recent_headlines[:3] if recent_headlines else [f"Keine Pressemeldungen für {company_name} im 30-Tage Fenster verzeichnet"]
+            "recent_headlines": recent_headlines[:3] if recent_headlines else [f"Keine Pressemeldungen für {company_name} im 2-Jahre Fenster verzeichnet"]
         }
     }
 
@@ -511,6 +512,11 @@ async def get_company_summary(bid_id: str, db: AsyncSession = Depends(get_db)):
     if not bid or not bid.company_summary:
         # Auto-extract and persist on the fly instead of 404
         return await extract_company_summary(bid_id, db=db)
+    
+    cached_summary = dict(bid.company_summary)
+    if cached_summary.get("company_name") == "Ziel-Auftraggeber":
+        return await extract_company_summary(bid_id, db=db)
+        
     return bid.company_summary
 
 
@@ -526,11 +532,26 @@ async def extract_company_summary(
     res = await db.execute(stmt)
     bid = res.scalars().first()
 
-    company_name = (
-        req.company_name
-        if (req and req.company_name)
-        else (bid.customer if (bid and bid.customer) else "Ziel-Auftraggeber")
-    )
+    company_name = req.company_name if (req and req.company_name) else None
+    if not company_name and bid and bid.customer and bid.customer != "Ziel-Auftraggeber":
+        company_name = bid.customer
+
+    if not company_name:
+        enriching_url = os.getenv("ENRICHING_URL", "http://tender-enriching:8002")
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                res_tender = await client.get(f"{enriching_url}/api/v1/tenders/{bid_id}")
+                if res_tender.status_code == 200:
+                    t_data = res_tender.json()
+                    c_found = t_data.get("customer") or t_data.get("caller") or t_data.get("buyer_organisation") or t_data.get("contracting_authority")
+                    if c_found:
+                        company_name = c_found
+        except Exception as err:
+            logger.debug(f"Could not resolve tender buyer from enriching service: {err}")
+
+    if not company_name:
+        company_name = "Ziel-Auftraggeber"
+
     is_aor = (
         req.is_aor
         if (req and req.is_aor is not None)
@@ -543,11 +564,11 @@ async def extract_company_summary(
     # Initialize summary structure if empty
     summary_data = {
         "bid_id": bid_id,
-        "company_name": company_name,
         "pipeline_status": existing_summary.get("pipeline_status") or get_default_pipeline_status(),
         "extracted_at": datetime.now(UTC).isoformat()
     }
     summary_data.update(existing_summary)
+    summary_data["company_name"] = company_name
 
     # Progressive 4-stage pipeline execution
     if target_stage in (1, None):
@@ -576,6 +597,7 @@ async def extract_company_summary(
 
     summary_data["pipeline_status"]["overall"] = "completed"
     summary_data["extracted_at"] = datetime.now(UTC).isoformat()
+    summary_data["company_name"] = company_name
 
     # Save to database with progressive persistence
     if not bid:
@@ -589,6 +611,7 @@ async def extract_company_summary(
         )
         db.add(bid)
     else:
+        bid.customer = company_name
         bid.company_summary = summary_data
         bid.company_summary_updated_at = datetime.now(UTC)
 
