@@ -397,14 +397,18 @@ async def _fetch_tender_data(source_id: str, source_kind: str) -> dict:
                             try:
                                 raw_resp = await client.get(f"{ENRICHING_URL}/api/v1/tenders/{m_id}/raw")
                                 if raw_resp.status_code == 200:
-                                    combined_texts.append(raw_resp.json().get("document_text") or "")
+                                    raw_json = raw_resp.json()
+                                    if isinstance(raw_json, dict):
+                                        combined_texts.append(raw_json.get("document_text") or "")
                             except Exception as raw_e:
                                 logger.warning(f"Failed to fetch raw text for member {m_id}: {raw_e}")
                     elif isinstance(member, str):
                         try:
                             raw_resp = await client.get(f"{ENRICHING_URL}/api/v1/tenders/{member}/raw")
                             if raw_resp.status_code == 200:
-                                combined_texts.append(raw_resp.json().get("document_text") or "")
+                                raw_json = raw_resp.json()
+                                if isinstance(raw_json, dict):
+                                    combined_texts.append(raw_json.get("document_text") or "")
                         except Exception as raw_e:
                             logger.warning(f"Failed to fetch raw text for member {member}: {raw_e}")
                 tender_data["document_text"] = "\n".join(combined_texts)
@@ -450,6 +454,7 @@ def _resolve_attachment_links(source_doc_name: str | None, attachments: list) ->
 def _create_required_documents(db: AsyncSession, docs_payload: list, attachments: list, bid_id: str):
     """Helper to create RequiredDocument database models."""
     import hashlib
+    import json
 
     if not isinstance(docs_payload, list):
         docs_payload = []
@@ -460,6 +465,11 @@ def _create_required_documents(db: AsyncSession, docs_payload: list, attachments
         if not isinstance(doc, dict):
             continue
         source_doc_name = doc.get("source_doc_name")
+        if isinstance(source_doc_name, (dict, list)):
+            source_doc_name = json.dumps(source_doc_name, ensure_ascii=False)
+        elif source_doc_name is not None:
+            source_doc_name = str(source_doc_name)
+
         link_original, link_parsed = _resolve_attachment_links(source_doc_name, attachments)
 
         is_mand = doc.get("is_mandatory")
@@ -469,17 +479,39 @@ def _create_required_documents(db: AsyncSession, docs_payload: list, attachments
         raw_id = doc.get("id") or doc.get("document_name") or str(idx)
         doc_unique_id = hashlib.md5(f"{bid_id}_{idx}_{raw_id}".encode()).hexdigest()
 
+        doc_name = doc.get("document_name")
+        if not isinstance(doc_name, str):
+            doc_name = str(doc_name) if doc_name else "Unnamed Document"
+
+        desc = doc.get("description")
+        if desc is not None and not isinstance(desc, str):
+            desc = json.dumps(desc, ensure_ascii=False) if isinstance(desc, (dict, list)) else str(desc)
+
+        cat = doc.get("category")
+        if cat is not None and not isinstance(cat, str):
+            cat = str(cat)
+        if cat:
+            cat = cat[:100]
+
+        short_sum = doc.get("short_summary")
+        if short_sum is not None and not isinstance(short_sum, str):
+            short_sum = json.dumps(short_sum, ensure_ascii=False) if isinstance(short_sum, (dict, list)) else str(short_sum)
+
+        quote_orig = doc.get("quote_original")
+        if quote_orig is not None and not isinstance(quote_orig, str):
+            quote_orig = json.dumps(quote_orig, ensure_ascii=False) if isinstance(quote_orig, (dict, list)) else str(quote_orig)
+
         db_doc = RequiredDocument(
             id=doc_unique_id,
             bid_id=bid_id,
-            document_name=doc.get("document_name") or "Unnamed Document",
-            description=doc.get("description"),
-            category=doc.get("category"),
-            short_summary=doc.get("short_summary"),
-            link_original_doc=link_original,
-            link_parsed_doc=link_parsed,
-            quote_original=doc.get("quote_original"),
-            is_mandatory=is_mand,
+            document_name=doc_name[:255],
+            description=desc,
+            category=cat,
+            short_summary=short_sum,
+            link_original_doc=link_original[:1000] if link_original else None,
+            link_parsed_doc=link_parsed[:1000] if link_parsed else None,
+            quote_original=quote_orig,
+            is_mandatory=bool(is_mand),
         )
         db.add(db_doc)
 
@@ -501,11 +533,15 @@ def _create_key_dates(db: AsyncSession, deadlines_payload: list, bid_id: str):
             except ValueError:
                 # Invalid date format, fallback to None
                 dt_val = None
+
+        kind_val = str(dl.get("kind") or "submission")[:20]
+        source_link_val = str(dl.get("source_link") or "notice")[:1000]
+
         db_dl = KeyDate(
             bid_id=bid_id,
-            kind=dl.get("kind") or "submission",
-            date=dt_val,
-            source_link=dl.get("source_link") or "notice",
+            kind=kind_val,
+            date=dt_val if isinstance(dt_val, datetime) else None,
+            source_link=source_link_val,
         )
         db.add(db_dl)
 

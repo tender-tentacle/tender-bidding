@@ -66,7 +66,10 @@ async def create_bid_from_snapshot(db: AsyncSession, payload) -> tuple[Bid, bool
         cluster=snap.get("cluster"),
         driver_user_id=snap.get("driver_user_id"),
         portal_key=portal_key_for(snap.get("source_system")),
-        lots_in_scope=[lot.get("lot_id") or lot.get("lot_number") for lot in snap.get("lots", [])],
+        lots_in_scope=[
+            lot.get("lot_id") or lot.get("lot_number") if isinstance(lot, dict) else str(lot)
+            for lot in (snap.get("lots") or [])
+        ],
         cpv_codes=snap.get("cpv_codes") or [],
         selection_criteria=snap.get("selection_criteria"),
         # Classification Matches

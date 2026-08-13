@@ -68,7 +68,7 @@ class SubsidyGrantItem(BaseModel):
     description: str = ""
 
 
-@router.get("/api/v1/companies/{company_name}/subsidies", response_model=list[SubsidyGrantItem])
+@router.get("/companies/{company_name:path}/subsidies", response_model=list[SubsidyGrantItem])
 async def get_company_subsidies(
     company_name: str,
     force_refresh: bool = Query(False, description="Force on-the-fly re-scrape"),
@@ -90,7 +90,8 @@ async def get_company_subsidies(
         return _SUBSIDY_CACHE.get(cache_key, [])
 
 
-@router.post("/api/v1/companies/{company_name}/subsidies/scrape", response_model=list[SubsidyGrantItem])
+@router.post("/companies/{company_name:path}/subsidies/scrape", response_model=list[SubsidyGrantItem])
 async def scrape_company_subsidies(company_name: str):
     """Trigger on-the-fly scrape of government grant registries for a company."""
     return await get_company_subsidies(company_name=company_name, force_refresh=True)
+

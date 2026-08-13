@@ -47,7 +47,8 @@ async def build_key_dates(snapshot: dict[str, Any]) -> list[KeyDate]:
                 dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
             except ValueError:
                 dt = None
-        out.append(KeyDate(kind=d["kind"], date=dt, source_link=d.get("source_link")))
+        kind_str = str(d.get("kind") or "submission")[:20]
+        out.append(KeyDate(kind=kind_str, date=dt, source_link=d.get("source_link")))
     return out
 
 
