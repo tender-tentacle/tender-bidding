@@ -59,8 +59,56 @@ async def get_company_db_data(company_name: str, db: AsyncSession | None) -> dic
     return data
 
 
+async def fetch_wikidata_gnd_profile(company_name: str) -> dict:
+    """Fetches on-the-fly Wikidata and DNB GND authority profile data via tender-crawling service or direct fallback."""
+    crawling_url = os.getenv("CRAWLING_URL", "http://127.0.0.1:8001")
+    res_data = {"wikidata": {}, "gnd": {}}
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            res_wiki = await client.post(
+                f"{crawling_url}/api/v1/scrape/wikidata",
+                json={"query": company_name},
+                timeout=8.0
+            )
+            if res_wiki.status_code == 200:
+                res_data["wikidata"] = res_wiki.json()
+
+            gnd_id = res_data["wikidata"].get("gnd_id")
+            res_gnd = await client.post(
+                f"{crawling_url}/api/v1/scrape/gnd",
+                json={"query": company_name, "gnd_id": gnd_id},
+                timeout=8.0
+            )
+            if res_gnd.status_code == 200:
+                res_data["gnd"] = res_gnd.json()
+    except Exception as e:
+        logger.warning(f"Could not fetch Wikidata/GND profile via HTTP for {company_name}: {e}")
+        try:
+            import importlib.util
+            from pathlib import Path
+            repo_root = Path(__file__).resolve().parents[3]
+            wiki_path = repo_root / "tender-crawling" / "core" / "scrapers" / "profile" / "wikidata" / "on_the_fly_scraper.py"
+            gnd_path = repo_root / "tender-crawling" / "core" / "scrapers" / "profile" / "gnd" / "on_the_fly_scraper.py"
+
+            spec_w = importlib.util.spec_from_file_location("wikidata_scraper_module", wiki_path)
+            mod_w = importlib.util.module_from_spec(spec_w)
+            spec_w.loader.exec_module(mod_w)
+
+            spec_g = importlib.util.spec_from_file_location("gnd_scraper_module", gnd_path)
+            mod_g = importlib.util.module_from_spec(spec_g)
+            spec_g.loader.exec_module(mod_g)
+
+            w_data = mod_w.WikidataScraper(company_name).fetch_company_data()
+            res_data["wikidata"] = w_data
+            g_id = w_data.get("gnd_id")
+            res_data["gnd"] = mod_g.DnbGndScraper(company_name, gnd_id=g_id).fetch_authority_data()
+        except Exception as fallback_e:
+            logger.warning(f"Direct fallback for Wikidata/GND failed for {company_name}: {fallback_e}")
+    return res_data
+
+
 async def discover_company_urls_azure(company_name: str) -> dict:
-    """Invokes artificial-intelligence-connector discover-links endpoint for Azure search link resolution."""
+    """Invokes artificial-intelligence-connector discover-links endpoint for Azure search link resolution or direct fallback."""
     ai_connector_url = os.getenv("AI_CONNECTOR_URL", "http://127.0.0.1:8004")
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -72,7 +120,25 @@ async def discover_company_urls_azure(company_name: str) -> dict:
             if res.status_code == 200:
                 return res.json()
     except Exception as e:
-        logger.warning(f"Could not fetch Azure link discovery for {company_name}: {e}")
+        logger.warning(f"Could not fetch Azure link discovery via HTTP for {company_name}: {e}")
+        try:
+            import importlib.util
+            import sys
+            from pathlib import Path
+            repo_root = Path(__file__).resolve().parents[3]
+            links_path = repo_root / "artificial-intelligence-connector" / "api" / "company_links.py"
+
+            ai_path = str(repo_root / "artificial-intelligence-connector")
+            if ai_path not in sys.path:
+                sys.path.insert(0, ai_path)
+
+            spec_l = importlib.util.spec_from_file_location("company_links_module", links_path)
+            mod_l = importlib.util.module_from_spec(spec_l)
+            spec_l.loader.exec_module(mod_l)
+
+            return await mod_l.discover_company_urls(company_name)
+        except Exception as fallback_e:
+            logger.warning(f"Direct fallback for company URL discovery failed for {company_name}: {fallback_e}")
     return {}
 
 
@@ -83,13 +149,25 @@ async def run_stage1_solvency(company_name: str, is_aor: bool, db: AsyncSession 
     ins: CompanyInsolvency | None = db_data.get("insolvency")
 
     discovered = await discover_company_urls_azure(company_name)
+    profiles = await fetch_wikidata_gnd_profile(company_name)
+    wiki_info = profiles.get("wikidata", {})
+    gnd_info = profiles.get("gnd", {})
+
+    wikidata_url = discovered.get("wikidata_url") or wiki_info.get("wikidata_url")
+    gnd_url = discovered.get("gnd_url") or gnd_info.get("gnd_url")
+    gnd_id = gnd_info.get("gnd_id") or wiki_info.get("gnd_id")
 
     if is_aor:
         solvency_status = "AÖR Öffentliche Hand (Keine Registerwarnung)"
         credit_score = "AAA (AÖR)"
         financial_trend = "Öffentliches Budget"
-        short_summary = f"{company_name} ist eine Anstalt des öffentlichen Rechts (AÖR)."
-        long_summary = f"Öffentlicher Auftraggeber {company_name}."
+        
+        wiki_desc = wiki_info.get("description") or ""
+        gnd_parent = gnd_info.get("parent_entity") or ""
+        parent_str = f" ({gnd_parent})" if gnd_parent else ""
+
+        short_summary = f"{company_name} ist eine Anstalt des öffentlichen Rechts (AÖR){parent_str}."
+        long_summary = wiki_desc if wiki_desc else f"Öffentlicher Auftraggeber {company_name}."
         bid_manager_summary = ""
     elif nd:
         solvency_status = f"{nd.register_court or ''} {nd.register_number or ''}".strip()
@@ -98,14 +176,15 @@ async def run_stage1_solvency(company_name: str, is_aor: bool, db: AsyncSession 
         court_str = f"am Amtsgericht {nd.register_court}" if nd.register_court else ""
         num_str = f"unter {nd.register_number}" if nd.register_number else ""
         short_summary = f"{company_name} {court_str} {num_str}".strip()
-        long_summary = nd.business_purpose or ""
+        long_summary = nd.business_purpose or wiki_info.get("description") or ""
         bid_manager_summary = ""
     else:
-        solvency_status = ""
-        credit_score = ""
+        solvency_status = f"GND {gnd_id}" if gnd_id else "Register-Erfassung ausstehend"
+        credit_score = "Wikidata/GND verifiziert" if (wikidata_url or gnd_url) else ""
         financial_trend = ""
-        short_summary = f"{company_name} (Erfassung ausstehend)"
-        long_summary = ""
+        wiki_desc = wiki_info.get("description") or ""
+        short_summary = f"{company_name} ({gnd_info.get('preferred_name') or wiki_info.get('label') or company_name})"
+        long_summary = wiki_desc or ""
         bid_manager_summary = ""
 
     if moods:
@@ -125,6 +204,11 @@ async def run_stage1_solvency(company_name: str, is_aor: bool, db: AsyncSession 
     elif nd and (nd.register_court or nd.register_number):
         red_flags.append(f"Handelsregister: {nd.register_court or ''} {nd.register_number or ''}".strip())
 
+    if gnd_id:
+        red_flags.append(f"DNB GND Register: {gnd_id}")
+    if wiki_info.get("qid"):
+        red_flags.append(f"Wikidata Entity: {wiki_info.get('qid')}")
+
     if ins and ins.has_notices:
         red_flags.append("⚠️ Insolvenzbekanntmachungen im Register gefunden")
 
@@ -139,6 +223,9 @@ async def run_stage1_solvency(company_name: str, is_aor: bool, db: AsyncSession 
             "northdata_url": discovered.get("northdata_url"),
             "financials_url": discovered.get("financials_url"),
             "newsroom_url": discovered.get("newsroom_url"),
+            "wikidata_url": wikidata_url,
+            "gnd_url": gnd_url,
+            "gnd_id": gnd_id,
         },
         "kununu_sentiment": {
             "work_life_balance": wlb,
