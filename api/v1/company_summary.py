@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import httpx
 from core.database import get_db
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from models.bid import (
     Bid,
     CompanyHistoricTender,

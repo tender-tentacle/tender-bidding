@@ -1,7 +1,7 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from api.v1.company_summary import run_stage1_solvency, run_stage2_implicit_needs
+from api.v1.company_summary import run_stage1_solvency
 
 
 @pytest.mark.asyncio
