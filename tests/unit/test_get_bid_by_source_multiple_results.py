@@ -1,15 +1,16 @@
 """Reproduction test for multiple results in GET /bids/by-source/{source_ref}."""
 
-import pytest
-import uuid
-import sys
 import os
+import sys
+import uuid
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from tests.helpers import api_client
 from core.database import SessionLocal
 from models.bid import Bid
+from tests.helpers import api_client
 
 
 @pytest.mark.asyncio

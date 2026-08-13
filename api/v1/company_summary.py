@@ -512,11 +512,11 @@ async def get_company_summary(bid_id: str, db: AsyncSession = Depends(get_db)):
     if not bid or not bid.company_summary:
         # Auto-extract and persist on the fly instead of 404
         return await extract_company_summary(bid_id, db=db)
-    
+
     cached_summary = dict(bid.company_summary)
     if cached_summary.get("company_name") == "Ziel-Auftraggeber":
         return await extract_company_summary(bid_id, db=db)
-        
+
     return bid.company_summary
 
 

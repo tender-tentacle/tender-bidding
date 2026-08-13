@@ -1,7 +1,8 @@
 """Consumer-driven contract test for enriching -> bidding /api/v1/bids/enrich endpoint."""
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 from tests.helpers import api_client
 
 ENRICH_REQUEST_PAYLOAD = {
