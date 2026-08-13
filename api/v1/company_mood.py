@@ -137,18 +137,53 @@ async def get_company_mood(company_id: str, db: AsyncSession = Depends(get_db)):
     return records
 
 
+import urllib.parse
+
+
+def clean_kununu_url(url: str | None) -> str | None:
+    if not url or not isinstance(url, str):
+        return None
+    u_str = url.strip()
+    if "kununu.com" not in u_str.lower():
+        return None
+    try:
+        decoded = urllib.parse.unquote(u_str)
+        match = re.search(r"kununu\.com/(?:([a-z]{2})/)?([^/?#]+)", decoded, flags=re.IGNORECASE)
+        if not match:
+            return None
+
+        country_code = (match.group(1) or "de").lower()
+        if country_code not in ("de", "ch", "at"):
+            country_code = "de"
+
+        raw_slug = match.group(2).strip()
+        replacements = {"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss", "Ä": "ae", "Ö": "oe", "Ü": "ue"}
+        for orig, rep in replacements.items():
+            raw_slug = raw_slug.replace(orig, rep)
+        raw_slug = re.sub(r"\([^)]*\)", "", raw_slug)
+        slug = re.sub(r"[^a-z0-9]+", "-", raw_slug.lower()).strip("-")
+        if not slug or slug in ("search", "suche", "pvs-holding", "unternehmen", "job", "jobs"):
+            return None
+        return f"https://www.kununu.com/{country_code}/{slug}"
+    except Exception:
+        return None
+
+
 @router.post("/company/{company_id:path}/mood/scrape", response_model=list[CompanyMoodSchema])
 async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest, db: AsyncSession = Depends(get_db)):
     """
     Manually scrape Kununu using a specific, validated URL.
     Requires an explicit kununu.com URL. Never scrapes without a URL.
     """
-    if not request.url or not isinstance(request.url, str) or "kununu.com" not in request.url.lower():
+    cleaned_url = clean_kununu_url(request.url)
+    if not cleaned_url:
         raise HTTPException(
             status_code=400,
             detail="A valid Kununu URL (e.g. https://www.kununu.com/de/company-name) is required to trigger Kununu scanner."
         )
-    logger.info(f"Manual Kununu scrape requested for {company_id} with URL {request.url}")
+    target_url = cleaned_url.strip()
+
+    logger.info(f"Manual Kununu scrape requested for {company_id} with URL {target_url}")
 
     clean_id = company_id.split(",")[0].split("(")[0].strip().lower()
     short_id = re.sub(r"\b(GmbH|AG|SE|Co\.|KG|Ltd\.|Inc\.|Corp\.)\b", "", clean_id, flags=re.IGNORECASE).strip()
@@ -177,7 +212,7 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
         try:
             await client.post(
                 f"{DISTRIBUTION_MS_URL}/api/v1/taxonomy/target_companies/by_name/{company_id}/links",
-                json={"url": request.url},
+                json={"url": target_url},
             )
             logger.info("Successfully saved Kununu URL to distributing MS.")
         except Exception as e:
@@ -191,7 +226,7 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
 
         try:
             crawling_response = await client.post(
-                f"{CRAWLING_MS_URL}/api/v1/scrape/kununu", json={"query": company_id, "url": request.url}
+                f"{CRAWLING_MS_URL}/api/v1/scrape/kununu", json={"query": company_id, "url": target_url}
             )
             if crawling_response.status_code in (402, 429):
                 err_detail = "Firecrawl API credit limit or quota reached."
