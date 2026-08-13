@@ -20,6 +20,7 @@ async def test_get_company_summary_lookup_by_source_ref_or_id():
     )
 
     mock_res.scalar_one_or_none.return_value = dummy_bid
+    mock_res.scalars.return_value.first.return_value = dummy_bid
     mock_db.execute.return_value = mock_res
 
     # Query using tender UUID
@@ -38,6 +39,7 @@ async def test_get_company_summary_auto_generates_when_missing():
     mock_db = AsyncMock()
     mock_res = MagicMock()
     mock_res.scalar_one_or_none.return_value = None
+    mock_res.scalars.return_value.first.return_value = None
     mock_db.execute.return_value = mock_res
 
     with patch("api.v1.company_summary.extract_company_summary", new_callable=AsyncMock) as mock_extract:
