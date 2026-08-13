@@ -274,28 +274,33 @@ async def run_stage2_implicit_needs(company_name: str, db: AsyncSession | None =
     # Direct open-data Tagesschau Search API fallback (https://www.tagesschau.de/api2u/search/)
     if not scraped_articles and company_name:
         try:
+            from core.utils import clean_company_name_candidates
+            candidates = clean_company_name_candidates(company_name)
             headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
             async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
-                res = await client.get(
-                    "https://www.tagesschau.de/api2u/search/",
-                    params={"searchText": company_name, "resultPage": 0, "pageSize": 30},
-                    timeout=10.0
-                )
-                if res.status_code == 200:
-                    news_data = res.json()
-                    raw_news = news_data.get("searchResults", []) or news_data.get("news", [])
-                    for item in raw_news:
-                        title = item.get("title") or ""
-                        details = item.get("firstSentence") or item.get("teaserImage", {}).get("title") or item.get("teaserImage", {}).get("alt") or ""
-                        share_url = item.get("detailsweb") or item.get("shareURL") or item.get("url") or ""
-                        pub_str = item.get("date") or item.get("sophoraCreated") or ""
-                        if title:
-                            scraped_articles.append({
-                                "title": title,
-                                "link": share_url,
-                                "content": details,
-                                "published_at": pub_str
-                            })
+                for cand in candidates:
+                    res = await client.get(
+                        "https://www.tagesschau.de/api2u/search/",
+                        params={"searchText": cand, "resultPage": 0, "pageSize": 30},
+                        timeout=10.0
+                    )
+                    if res.status_code == 200:
+                        news_data = res.json()
+                        raw_news = news_data.get("searchResults", []) or news_data.get("news", [])
+                        for item in raw_news:
+                            title = item.get("title") or ""
+                            details = item.get("firstSentence") or item.get("teaserImage", {}).get("title") or item.get("teaserImage", {}).get("alt") or ""
+                            share_url = item.get("detailsweb") or item.get("shareURL") or item.get("url") or ""
+                            pub_str = item.get("date") or item.get("sophoraCreated") or ""
+                            if title:
+                                scraped_articles.append({
+                                    "title": title,
+                                    "link": share_url,
+                                    "content": details,
+                                    "published_at": pub_str
+                                })
+                        if scraped_articles:
+                            break
         except Exception as direct_e:
             logger.warning(f"Direct Tagesschau API call failed for {company_name}: {direct_e}")
 

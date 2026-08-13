@@ -92,14 +92,18 @@ async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
     scraped_articles = []
 
     # Step 2: Crawl DuckDuckGo News for target company/buyer
-    logger.info(f"Triggering DuckDuckGo News scraper for {company_name}")
+    from core.utils import clean_company_name_candidates
+    candidates = clean_company_name_candidates(company_name)
+    primary_query = candidates[0] if candidates else company_name
+
+    logger.info(f"Triggering DuckDuckGo News scraper for {primary_query} (raw: {company_name})")
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            res = await client.post(f"{crawling_url}/api/v1/scrape/news", json={"query": company_name}, timeout=25.0)
+            res = await client.post(f"{crawling_url}/api/v1/scrape/news", json={"query": primary_query}, timeout=25.0)
             if res.status_code == 200:
                 scraped_articles.extend(res.json())
     except Exception as e:
-        logger.warning(f"Failed to fetch DuckDuckGo news for {company_name}: {e}")
+        logger.warning(f"Failed to fetch DuckDuckGo news for {primary_query}: {e}")
 
     # Step 3: Crawl custom or DDG-discovered newsroom/blog URLs
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -109,7 +113,7 @@ async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
                     logger.info(f"Crawling master-data newsroom URL for {company_name}: {url}")
                     res = await client.post(
                         f"{crawling_url}/api/v1/scrape/newsroom",
-                        json={"url": url, "company_name": company_name},
+                        json={"url": url, "company_name": primary_query},
                         timeout=25.0,
                     )
                     if res.status_code == 200:
@@ -118,27 +122,29 @@ async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
                     logger.warning(f"Failed to crawl newsroom URL {url}: {e}")
         else:
             try:
-                logger.info(f"Triggering DuckDuckGo newsroom discovery for {company_name}")
+                logger.info(f"Triggering DuckDuckGo newsroom discovery for {primary_query}")
                 res = await client.post(
-                    f"{crawling_url}/api/v1/scrape/newsroom", json={"company_name": company_name}, timeout=25.0
+                    f"{crawling_url}/api/v1/scrape/newsroom", json={"company_name": primary_query}, timeout=25.0
                 )
                 if res.status_code == 200:
                     scraped_articles.extend(res.json())
             except Exception as e:
-                logger.warning(f"Failed to discover/crawl newsrooms for {company_name}: {e}")
+                logger.warning(f"Failed to discover/crawl newsrooms for {primary_query}: {e}")
 
     # Step 4: Fallback to Tagesschau search if no articles found so far
     if not scraped_articles:
-        logger.info(f"Fallback: Triggering Tagesschau scraper for {company_name}")
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                res = await client.post(
-                    f"{crawling_url}/api/v1/scrape/tagesschau", json={"query": company_name}, timeout=25.0
-                )
-                if res.status_code == 200:
-                    scraped_articles.extend(res.json())
-        except Exception as e:
-            logger.error(f"Failed to connect to crawling service for Tagesschau fallback: {e}")
+        logger.info(f"Fallback: Triggering Tagesschau scraper for {company_name} (candidates: {candidates})")
+        for cand in candidates:
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    res = await client.post(
+                        f"{crawling_url}/api/v1/scrape/tagesschau", json={"query": cand}, timeout=25.0
+                    )
+                    if res.status_code == 200 and res.json():
+                        scraped_articles.extend(res.json())
+                        break
+            except Exception as e:
+                logger.error(f"Failed to connect to crawling service for Tagesschau fallback: {e}")
 
     if not scraped_articles:
         logger.info(f"No news articles found for {company_id}")
