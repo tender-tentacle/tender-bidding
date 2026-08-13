@@ -56,9 +56,9 @@ async def _load(db: AsyncSession, bid_id: str) -> Bid:
                 selectinload(Bid.required_documents),
                 selectinload(Bid.key_dates),
             )
-            .where(Bid.id == bid_id)
+            .where((Bid.id == bid_id) | (Bid.source_ref == bid_id) | (Bid.enriching_id == bid_id))
         )
-    ).scalar_one_or_none()
+    ).scalars().first()
     if not bid:
         raise HTTPException(status_code=404, detail="Bid not found")
     return bid
@@ -110,9 +110,9 @@ async def get_bid_by_source(source_ref: str, db: Annotated[AsyncSession, Depends
                 selectinload(Bid.required_documents),
                 selectinload(Bid.key_dates),
             )
-            .where((Bid.source_ref == source_ref) | (Bid.enriching_id == source_ref))
+            .where((Bid.id == source_ref) | (Bid.source_ref == source_ref) | (Bid.enriching_id == source_ref))
         )
-    ).scalar_one_or_none()
+    ).scalars().first()
 
     if not bid:
         # Fallback for bids that predate enriching_id or auto-initialize: resolve UUID → external_id
