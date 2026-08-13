@@ -38,7 +38,7 @@ async def get_by_source_ref(db: AsyncSession, source_ref: str) -> Bid | None:
             .where(or_(Bid.source_ref == source_ref, Bid.id == source_ref, Bid.enriching_id == source_ref))
             .execution_options(populate_existing=True)
         )
-    ).scalar_one_or_none()
+    ).scalars().first()
 
 
 async def create_bid_from_snapshot(db: AsyncSession, payload) -> tuple[Bid, bool]:

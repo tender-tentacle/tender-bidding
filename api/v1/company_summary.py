@@ -507,7 +507,7 @@ from sqlalchemy import or_
 async def get_company_summary(bid_id: str, db: AsyncSession = Depends(get_db)):
     stmt = select(Bid).where(or_(Bid.id == bid_id, Bid.source_ref == bid_id, Bid.enriching_id == bid_id))
     res = await db.execute(stmt)
-    bid = res.scalar_one_or_none()
+    bid = res.scalars().first()
     if not bid or not bid.company_summary:
         # Auto-extract and persist on the fly instead of 404
         return await extract_company_summary(bid_id, db=db)
@@ -524,7 +524,7 @@ async def extract_company_summary(
     # Fetch existing bid summary or create placeholder
     stmt = select(Bid).where(or_(Bid.id == bid_id, Bid.source_ref == bid_id, Bid.enriching_id == bid_id))
     res = await db.execute(stmt)
-    bid = res.scalar_one_or_none()
+    bid = res.scalars().first()
 
     company_name = (
         req.company_name
