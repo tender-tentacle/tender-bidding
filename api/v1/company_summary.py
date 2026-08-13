@@ -161,7 +161,7 @@ async def run_stage1_solvency(company_name: str, is_aor: bool, db: AsyncSession 
         solvency_status = "AÖR Öffentliche Hand (Keine Registerwarnung)"
         credit_score = "AAA (AÖR)"
         financial_trend = "Öffentliches Budget"
-        
+
         wiki_desc = wiki_info.get("description") or ""
         gnd_parent = gnd_info.get("parent_entity") or ""
         parent_str = f" ({gnd_parent})" if gnd_parent else ""
