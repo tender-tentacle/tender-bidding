@@ -6,7 +6,7 @@ from typing import Any
 
 from core.logger import setup_logger
 from models.bid import Bid, BidCollaborator
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -30,11 +30,12 @@ async def get_by_source_ref(db: AsyncSession, source_ref: str) -> Bid | None:
             select(Bid)
             .options(
                 selectinload(Bid.collaborators),
+                selectinload(Bid.checklist_items),
                 selectinload(Bid.documents),
                 selectinload(Bid.required_documents),
                 selectinload(Bid.key_dates),
             )
-            .where(Bid.source_ref == source_ref)
+            .where(or_(Bid.source_ref == source_ref, Bid.id == source_ref, Bid.enriching_id == source_ref))
             .execution_options(populate_existing=True)
         )
     ).scalar_one_or_none()

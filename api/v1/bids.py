@@ -51,6 +51,7 @@ async def _load(db: AsyncSession, bid_id: str) -> Bid:
             select(Bid)
             .options(
                 selectinload(Bid.collaborators),
+                selectinload(Bid.checklist_items),
                 selectinload(Bid.documents),
                 selectinload(Bid.required_documents),
                 selectinload(Bid.key_dates),
@@ -104,6 +105,7 @@ async def get_bid_by_source(source_ref: str, db: Annotated[AsyncSession, Depends
             select(Bid)
             .options(
                 selectinload(Bid.collaborators),
+                selectinload(Bid.checklist_items),
                 selectinload(Bid.documents),
                 selectinload(Bid.required_documents),
                 selectinload(Bid.key_dates),

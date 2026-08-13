@@ -216,7 +216,7 @@ class BidActivity(Base):
     __tablename__ = "bid_activity"
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
-    bid_id: Mapped[str] = mapped_column(ForeignKey("bid.id"), index=True)
+    bid_id: Mapped[str] = mapped_column(String(255), ForeignKey("bid.id"), index=True)
     actor_user_id: Mapped[str | None] = mapped_column(String(255))
     action: Mapped[str] = mapped_column(String(100))
     detail: Mapped[dict | None] = mapped_column(JSON)

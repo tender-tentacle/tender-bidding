@@ -59,11 +59,30 @@ async def get_company_db_data(company_name: str, db: AsyncSession | None) -> dic
     return data
 
 
+async def discover_company_urls_azure(company_name: str) -> dict:
+    """Invokes artificial-intelligence-connector discover-links endpoint for Azure search link resolution."""
+    ai_connector_url = os.getenv("AI_CONNECTOR_URL", "http://127.0.0.1:8004")
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.post(
+                f"{ai_connector_url}/api/v1/company/discover-links",
+                json={"company_name": company_name},
+                timeout=10.0
+            )
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.warning(f"Could not fetch Azure link discovery for {company_name}: {e}")
+    return {}
+
+
 async def run_stage1_solvency(company_name: str, is_aor: bool, db: AsyncSession | None = None) -> dict:
     db_data = await get_company_db_data(company_name, db)
     nd: CompanyNorthData | None = db_data.get("northdata")
     moods: list[CompanyMood] = db_data.get("moods") or []
     ins: CompanyInsolvency | None = db_data.get("insolvency")
+
+    discovered = await discover_company_urls_azure(company_name)
 
     if is_aor:
         solvency_status = "AÖR Öffentliche Hand (Keine Registerwarnung)"
@@ -116,12 +135,16 @@ async def run_stage1_solvency(company_name: str, is_aor: bool, db: AsyncSession 
         "financial_solvency_badges": {
             "solvency_status": solvency_status,
             "credit_score": credit_score,
-            "financial_trend": financial_trend
+            "financial_trend": financial_trend,
+            "northdata_url": discovered.get("northdata_url"),
+            "financials_url": discovered.get("financials_url"),
+            "newsroom_url": discovered.get("newsroom_url"),
         },
         "kununu_sentiment": {
             "work_life_balance": wlb,
             "management_rating": mgmt,
-            "retention_score": retention
+            "retention_score": retention,
+            "kununu_url": discovered.get("kununu_url"),
         },
         "red_flag_banners": red_flags
     }
@@ -390,13 +413,17 @@ async def update_prompt_config(req: PromptUpdateRequest):
     return PROMPT_CONFIG
 
 
+from sqlalchemy import or_
+
+
 @router.get("/bids/{bid_id}/company-summary")
 async def get_company_summary(bid_id: str, db: AsyncSession = Depends(get_db)):
-    stmt = select(Bid).where(Bid.id == bid_id)
+    stmt = select(Bid).where(or_(Bid.id == bid_id, Bid.source_ref == bid_id, Bid.enriching_id == bid_id))
     res = await db.execute(stmt)
     bid = res.scalar_one_or_none()
     if not bid or not bid.company_summary:
-        raise HTTPException(status_code=404, detail="Company summary not found for this bid")
+        # Auto-extract and persist on the fly instead of 404
+        return await extract_company_summary(bid_id, db=db)
     return bid.company_summary
 
 
@@ -407,14 +434,22 @@ async def extract_company_summary(
     stage: int | None = None,
     db: AsyncSession = Depends(get_db)
 ):
-    company_name = req.company_name if (req and req.company_name) else "Ziel-Auftraggeber"
-    is_aor = req.is_aor if (req and req.is_aor is not None) else ("Landesbetrieb" in company_name or "Amt" in company_name or "AÖR" in company_name or "Flughafen" in company_name)
-    target_stage = req.stage if (req and req.stage is not None) else stage
-
     # Fetch existing bid summary or create placeholder
-    stmt = select(Bid).where(Bid.id == bid_id)
+    stmt = select(Bid).where(or_(Bid.id == bid_id, Bid.source_ref == bid_id, Bid.enriching_id == bid_id))
     res = await db.execute(stmt)
     bid = res.scalar_one_or_none()
+
+    company_name = (
+        req.company_name
+        if (req and req.company_name)
+        else (bid.customer if (bid and bid.customer) else "Ziel-Auftraggeber")
+    )
+    is_aor = (
+        req.is_aor
+        if (req and req.is_aor is not None)
+        else ("Landesbetrieb" in company_name or "Amt" in company_name or "AÖR" in company_name or "Flughafen" in company_name)
+    )
+    target_stage = req.stage if (req and req.stage is not None) else stage
 
     existing_summary = dict(bid.company_summary) if (bid and bid.company_summary) else {}
 
