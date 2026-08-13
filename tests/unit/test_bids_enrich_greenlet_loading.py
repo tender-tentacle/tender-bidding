@@ -68,6 +68,7 @@ async def test_bids_api_load_and_get_by_source_include_checklist_items():
         key_dates=[],
     )
     mock_res.scalar_one_or_none.return_value = dummy_bid
+    mock_res.scalars.return_value.first.return_value = dummy_bid
     mock_db.execute.return_value = mock_res
 
     # Test _load
