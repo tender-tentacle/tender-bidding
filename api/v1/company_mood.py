@@ -76,11 +76,13 @@ class ScrapeMoodRequest(BaseModel):
     force: bool = False
 
 
-@router.get("/company/{company_id:path}/salaries", response_model=list[CompanySalarySchema])
+@router.get("/company/{company_id}/salaries", response_model=list[CompanySalarySchema])
 async def get_company_salaries(company_id: str, db: AsyncSession = Depends(get_db)):
     """
     Get company salary job titles for a specific company ordered by number of people using that title (sample_count DESC).
     """
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
     clean_id = company_id.split(",")[0].split("(")[0].strip().lower()
     short_id = re.sub(r"\b(GmbH|AG|SE|Co\.|KG|Ltd\.|Inc\.|Corp\.)\b", "", clean_id, flags=re.IGNORECASE).strip()
 
@@ -97,11 +99,13 @@ async def get_company_salaries(company_id: str, db: AsyncSession = Depends(get_d
     return result.scalars().all()
 
 
-@router.get("/company/{company_id:path}/kununu_jobs", response_model=list[CompanyJobSchema])
+@router.get("/company/{company_id}/kununu_jobs", response_model=list[CompanyJobSchema])
 async def get_company_kununu_jobs(company_id: str, db: AsyncSession = Depends(get_db)):
     """
     Get open Kununu job postings for a specific company.
     """
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
     clean_id = company_id.split(",")[0].split("(")[0].strip().lower()
     short_id = re.sub(r"\b(GmbH|AG|SE|Co\.|KG|Ltd\.|Inc\.|Corp\.)\b", "", clean_id, flags=re.IGNORECASE).strip()
 
@@ -118,12 +122,14 @@ async def get_company_kununu_jobs(company_id: str, db: AsyncSession = Depends(ge
     return result.scalars().all()
 
 
-@router.get("/company/{company_id:path}/mood", response_model=list[CompanyMoodSchema])
+@router.get("/company/{company_id}/mood", response_model=list[CompanyMoodSchema])
 async def get_company_mood(company_id: str, db: AsyncSession = Depends(get_db)):
     """
     Get cached employee mood reviews for a specific company.
     Returns cached DB records without triggering automatic live scraping or guessing URLs.
     """
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
     clean_id = company_id.split(",")[0].split("(")[0].strip().lower()
     short_id = re.sub(r"\b(GmbH|AG|SE|Co\.|KG|Ltd\.|Inc\.|Corp\.)\b", "", clean_id, flags=re.IGNORECASE).strip()
 
@@ -169,12 +175,14 @@ def clean_kununu_url(url: str | None) -> str | None:
         return None
 
 
-@router.post("/company/{company_id:path}/mood/scrape", response_model=list[CompanyMoodSchema])
+@router.post("/company/{company_id}/mood/scrape", response_model=list[CompanyMoodSchema])
 async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest, db: AsyncSession = Depends(get_db)):
     """
     Manually scrape Kununu using a specific, validated URL.
     Requires an explicit kununu.com URL. Never scrapes without a URL.
     """
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
     cleaned_url = clean_kununu_url(request.url)
     if not cleaned_url:
         raise HTTPException(
@@ -452,12 +460,14 @@ class IngestPayload(BaseModel):
     source: str | None = "browser-relay"  # audit trail
 
 
-@router.post("/company/{company_id:path}/mood/ingest", response_model=list[CompanyMoodSchema])
+@router.post("/company/{company_id}/mood/ingest", response_model=list[CompanyMoodSchema])
 async def ingest_browser_crawl(
     company_id: str,
     payload: IngestPayload,
     db: AsyncSession = Depends(get_db),
 ):
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
     """
     Accepts pre-parsed Kununu data from the browser-relay local proxy.
     The browser fetches Kununu using the user's residential IP (no WAF block),
@@ -610,11 +620,13 @@ async def ingest_browser_crawl(
     return result.scalars().all()
 
 
-@router.delete("/company/{company_id:path}/mood")
+@router.delete("/company/{company_id}/mood")
 async def delete_company_mood(company_id: str, db: AsyncSession = Depends(get_db)):
     """
     Purge cached Kununu employee mood, salary entries, and job postings for a company.
     """
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
     clean_id = company_id.split(",")[0].split("(")[0].strip().lower()
     short_id = re.sub(r"\b(GmbH|AG|SE|Co\.|KG|Ltd\.|Inc\.|Corp\.)\b", "", clean_id, flags=re.IGNORECASE).strip()
 

@@ -49,24 +49,27 @@ class ScrapeNorthDataRequest(BaseModel):
     url: str
 
 
-@router.get("/company/{company_id:path}/northdata", response_model=CompanyNorthDataSchema | None)
+@router.get("/company/{company_id}/northdata", response_model=CompanyNorthDataSchema | None)
 async def get_company_northdata(company_id: str, db: AsyncSession = Depends(get_db)):
     """
     Get stored North Data company master data for a specific company.
     """
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
     stmt = select(CompanyNorthData).where(func.lower(CompanyNorthData.company_id) == company_id.lower())
     res = await db.execute(stmt)
     entry = res.scalars().first()
     return entry
 
 
-@router.post("/company/{company_id:path}/northdata/scrape", response_model=CompanyNorthDataSchema)
+@router.post("/company/{company_id}/northdata/scrape", response_model=CompanyNorthDataSchema)
 async def scrape_company_northdata(company_id: str, request: ScrapeNorthDataRequest, db: AsyncSession = Depends(get_db)):
     """
     Manually scrape North Data using a specific URL.
     Saves link to distributing MS and stores master data in Bidding MS.
     """
-    from urllib.parse import quote
+    from urllib.parse import unquote, quote
+    company_id = unquote(company_id)
 
     target_url = (
         request.url.strip()

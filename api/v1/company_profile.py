@@ -100,12 +100,14 @@ class CompanyProfileSchema(BaseModel):
 # ── ENDPOINTS ────────────────────────────────────────────────────
 
 
-@router.get("/company/{company_id:path}/profile", response_model=CompanyProfileSchema)
+@router.get("/company/{company_id}/profile", response_model=CompanyProfileSchema)
 async def get_company_profile(company_id: str, db: AsyncSession = Depends(get_db)):
     """
     Get company profile from Wikipedia & Service.bund.de.
     If no recent data is found (younger than 30 days), trigger the scrapers.
     """
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
     # DB stores naive UTC datetimes — compare naive UTC on both sides
     thirty_days_ago = datetime.utcnow() - timedelta(days=30)
 
@@ -216,9 +218,11 @@ async def get_company_profile(company_id: str, db: AsyncSession = Depends(get_db
     )
 
 
-@router.post("/company/{company_id:path}/summarize/{summary_type}", response_model=CompanyProfileSchema)
+@router.post("/company/{company_id}/summarize/{summary_type}", response_model=CompanyProfileSchema)
 async def summarize_company_data(company_id: str, summary_type: str, db: AsyncSession = Depends(get_db)):
     """Generate an AI summary for financials, hiring, or reputation."""
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
     from core.ai_client import get_ai_client
     from models.bid import CompanyJobEntry, CompanyMood, CompanyRegisterEntry
     from sqlalchemy import select
@@ -297,9 +301,11 @@ async def summarize_company_data(company_id: str, summary_type: str, db: AsyncSe
     return profile
 
 
-@router.post("/company/{company_id:path}/historic-tenders", response_model=CompanyProfileSchema)
+@router.post("/company/{company_id}/historic-tenders", response_model=CompanyProfileSchema)
 async def evaluate_historic_tenders(company_id: str, db: AsyncSession = Depends(get_db)):
     """Fetch historic tenders from crawler, cache them, and evaluate incumbent advantage/competitor density."""
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
     from core.ai_client import get_ai_client
     from models.bid import CompanyHistoricTender
 

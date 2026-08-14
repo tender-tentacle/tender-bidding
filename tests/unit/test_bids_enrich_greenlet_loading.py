@@ -99,7 +99,7 @@ async def test_bid_activity_model_allows_long_bid_ids():
 
     # Check model column DDL length
     bid_id_col = BidActivity.__table__.columns["bid_id"]
-    assert bid_id_col.type.length == 255, f"BidActivity.bid_id column length should be 255, got {bid_id_col.type.length}"
+    assert bid_id_col.type.length == 128, f"BidActivity.bid_id column length should be 128 to match Bid.id, got {bid_id_col.type.length}"
 
     # Test record helper with 36-character UUID string (group ID)
     group_uuid = "4ec81455-a590-48af-8c2f-e667135cca81"

@@ -100,12 +100,16 @@ async def create_bid_from_snapshot(db: AsyncSession, payload) -> tuple[Bid, bool
         "bid.created",
         {"source_ref": bid.source_ref, "checklist_items": len(bid.checklist_items), "provisional": provisional},
     )
+    bid_id = bid.id
+    source_ref_val = bid.source_ref
+    item_count = len(bid.checklist_items)
     await db.commit()
     logger.info(
-        f"🎯 Created {'provisional ' if provisional else ''}bid {bid.id} from {bid.source_ref} "
-        f"({len(bid.checklist_items)} checklist items)"
+        f"🎯 Created {'provisional ' if provisional else ''}bid {bid_id} from {source_ref_val} "
+        f"({item_count} checklist items)"
     )
-    return bid, True
+    created_bid = await get_by_source_ref(db, source_ref_val)
+    return created_bid, True
 
 
 async def _promote(db: AsyncSession, bid: Bid, snap: dict[str, Any]) -> None:

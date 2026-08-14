@@ -14,12 +14,14 @@ router = APIRouter()
 AI_URL = os.getenv("AI_URL", "http://ai:8004").rstrip("/")
 
 
-@router.get("/company/{company_id:path}/reputation")
+@router.get("/company/{company_id}/reputation")
 async def get_company_reputation(company_id: str, db: AsyncSession = Depends(get_db)):
     """
     Get company intelligence (news, jobs, blog, financials, mood).
     Uses AI Connector as the primary search engine and caches results in DB for 30 days.
     """
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
     company_name = company_id
 
     # 1. Check DB Cache (30 days TTL)

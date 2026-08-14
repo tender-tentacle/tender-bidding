@@ -26,13 +26,15 @@ class CompanyNewsEntrySchema(BaseModel):
         from_attributes = True
 
 
-@router.get("/company/{company_id:path}/news", response_model=list[CompanyNewsEntrySchema])
+@router.get("/company/{company_id}/news", response_model=list[CompanyNewsEntrySchema])
 async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
     """
     Get company news for a given company.
     Checks master data for custom newsroom/blog portal links, crawls them via crawling MS,
     and falls back to Tagesschau if no portal links exist or return zero results.
     """
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
     one_hour_ago = datetime.utcnow() - timedelta(hours=1)
 
     result = await db.execute(select(CompanyNewsEntry).where(CompanyNewsEntry.company_id == company_id))

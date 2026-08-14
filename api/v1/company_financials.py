@@ -27,12 +27,14 @@ class CompanyFinancialsSchema(BaseModel):
         from_attributes = True
 
 
-@router.get("/company/{company_id:path}/financials", response_model=list[CompanyFinancialsSchema])
+@router.get("/company/{company_id}/financials", response_model=list[CompanyFinancialsSchema])
 async def get_company_financials(company_id: str, db: AsyncSession = Depends(get_db)):
     """
     Get company financials and register entries for a specific company.
     Currently only returns cached data from the DB since live scraping is blocked.
     """
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
     stmt = select(CompanyRegisterEntry).where(CompanyRegisterEntry.company_id == company_id)
     result = await db.execute(stmt)
     existing_entries = result.scalars().all()

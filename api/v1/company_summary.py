@@ -542,15 +542,23 @@ async def extract_company_summary(
         company_name = bid.customer
 
     if not company_name:
-        enriching_url = os.getenv("ENRICHING_URL", "http://tender-enriching:8002")
+        from core.config import ENRICHING_URL
+
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
-                res_tender = await client.get(f"{enriching_url}/api/v1/tenders/{bid_id}")
+                res_tender = await client.get(f"{ENRICHING_URL}/api/v1/tenders/{bid_id}")
                 if res_tender.status_code == 200:
                     t_data = res_tender.json()
                     c_found = t_data.get("customer") or t_data.get("caller") or t_data.get("buyer_organisation") or t_data.get("contracting_authority")
                     if c_found:
                         company_name = c_found
+                else:
+                    res_group = await client.get(f"{ENRICHING_URL}/api/v1/tenders/groups/{bid_id}")
+                    if res_group.status_code == 200:
+                        g_data = res_group.json()
+                        c_found = g_data.get("customer") or g_data.get("caller") or g_data.get("buyer_organisation") or g_data.get("contracting_authority")
+                        if c_found:
+                            company_name = c_found
         except Exception as err:
             logger.debug(f"Could not resolve tender buyer from enriching service: {err}")
 

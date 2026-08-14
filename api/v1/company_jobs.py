@@ -32,12 +32,14 @@ class CompanyJobSchema(BaseModel):
         from_attributes = True
 
 
-@router.get("/company/{company_id:path}/jobsuche", response_model=list[CompanyJobSchema])
+@router.get("/company/{company_id}/jobsuche", response_model=list[CompanyJobSchema])
 async def get_company_arbeitsagentur_jobs(company_id: str, db: AsyncSession = Depends(get_db)):
     """
     Get Arbeitsagentur open job positions for a specific company.
     If no recent data is found (last 30 days), auto-triggers the Arbeitsagentur scraper.
     """
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
     thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
 
     stmt = select(CompanyJobEntry).where(
@@ -60,11 +62,13 @@ async def get_company_arbeitsagentur_jobs(company_id: str, db: AsyncSession = De
     return await scrape_company_arbeitsagentur_jobs(company_id=company_id, db=db)
 
 
-@router.post("/company/{company_id:path}/jobsuche/scrape", response_model=list[CompanyJobSchema])
+@router.post("/company/{company_id}/jobsuche/scrape", response_model=list[CompanyJobSchema])
 async def scrape_company_arbeitsagentur_jobs(company_id: str, db: AsyncSession = Depends(get_db)):
     """
     Manually scrape Arbeitsagentur Jobsuche API on-the-fly for a specific company and save results to Bidding MS.
     """
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
     search_query = re.sub(r"\(.*?\)", "", company_id)
     search_query = re.sub(r"\b(GmbH|AG|SE|Co\.|KG|Ltd\.|Inc\.|Corp\.)\b", "", search_query, flags=re.IGNORECASE)
     search_query = " ".join(search_query.split())
@@ -162,12 +166,14 @@ async def scrape_company_arbeitsagentur_jobs(company_id: str, db: AsyncSession =
     ]
 
 
-@router.get("/company/{company_id:path}/servicebund_jobs", response_model=list[CompanyJobSchema])
+@router.get("/company/{company_id}/servicebund_jobs", response_model=list[CompanyJobSchema])
 async def get_company_servicebund_jobs(company_id: str, db: AsyncSession = Depends(get_db)):
     """
     Get Bund.de (service.bund.de) open job positions for a specific company.
     If no recent data is found (last 30 days), auto-triggers the service.bund.de scraper.
     """
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
     thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
 
     stmt = select(CompanyJobEntry).where(
@@ -190,11 +196,13 @@ async def get_company_servicebund_jobs(company_id: str, db: AsyncSession = Depen
     return await scrape_company_servicebund_jobs(company_id=company_id, db=db)
 
 
-@router.post("/company/{company_id:path}/servicebund_jobs/scrape", response_model=list[CompanyJobSchema])
+@router.post("/company/{company_id}/servicebund_jobs/scrape", response_model=list[CompanyJobSchema])
 async def scrape_company_servicebund_jobs(company_id: str, db: AsyncSession = Depends(get_db)):
     """
     Manually scrape service.bund.de Stellenangebote on-the-fly for a specific company and save results to Bidding MS.
     """
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
     search_query = re.sub(r"\(.*?\)", "", company_id)
     search_query = re.sub(r"\b(GmbH|AG|SE|Co\.|KG|Ltd\.|Inc\.|Corp\.)\b", "", search_query, flags=re.IGNORECASE)
     search_query = " ".join(search_query.split())
@@ -290,12 +298,14 @@ async def scrape_company_servicebund_jobs(company_id: str, db: AsyncSession = De
     ]
 
 
-@router.get("/company/{company_id:path}/jobs", response_model=list[CompanyJobSchema])
+@router.get("/company/{company_id}/jobs", response_model=list[CompanyJobSchema])
 async def get_company_jobs(company_id: str, db: AsyncSession = Depends(get_db)):
     """
     Get Kununu open job positions for a specific company.
     If no recent data is found (last 30 days), it will trigger the Kununu scraper.
     """
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
     thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
 
     stmt = select(CompanyJobEntry).where(

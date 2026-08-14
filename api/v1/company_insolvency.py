@@ -30,12 +30,14 @@ class CompanyInsolvencySchema(BaseModel):
         from_attributes = True
 
 
-@router.get("/company/{company_id:path}/insolvency", response_model=Optional[CompanyInsolvencySchema])
+@router.get("/company/{company_id}/insolvency", response_model=Optional[CompanyInsolvencySchema])
 async def get_company_insolvency(company_id: str, db: AsyncSession = Depends(get_db)):
     """
     Get company insolvency status.
     If no recent data is found (last 30 days), it will trigger the scraper.
     """
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
     thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
 
     stmt = select(CompanyInsolvency).where(
