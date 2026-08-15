@@ -425,10 +425,10 @@ async def run_stage2_market_and_news(company_name: str, db: AsyncSession | None 
 
     if company_name and company_name != "Ziel-Auftraggeber":
         try:
-            candidates = [company_name]
-            clean_name = company_name.replace("GmbH", "").replace("AG", "").replace("Landesbetrieb", "").strip()
-            if clean_name and clean_name not in candidates:
-                candidates.append(clean_name)
+            from core.utils import clean_company_name_candidates
+            candidates = clean_company_name_candidates(company_name)
+            if company_name not in candidates:
+                candidates.insert(0, company_name)
 
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
             async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
