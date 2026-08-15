@@ -15,7 +15,9 @@ from models.bid import (
     CompanyNewsEntry,
     CompanyNorthData,
 )
+import re
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -36,24 +38,63 @@ async def get_company_db_data(company_name: str, db: AsyncSession | None) -> dic
     if not db:
         return {}
     company_id = company_name.strip()
+    clean_id = company_id.split(",")[0].split("(")[0].strip().lower()
+    short_id = re.sub(r"\b(GmbH|AG|SE|Co\.|KG|Ltd\.|Inc\.|Corp\.)\b", "", clean_id, flags=re.IGNORECASE).strip()
     data = {}
     try:
-        res_nd = await db.execute(select(CompanyNorthData).where(CompanyNorthData.company_id == company_id))
+        res_nd = await db.execute(
+            select(CompanyNorthData).where(
+                (CompanyNorthData.company_id == company_id)
+                | (func.lower(CompanyNorthData.company_id) == company_id.lower())
+                | (func.lower(CompanyNorthData.company_id).contains(clean_id))
+            )
+        )
         data["northdata"] = res_nd.scalars().first()
 
-        res_mood = await db.execute(select(CompanyMood).where(CompanyMood.company_id == company_id))
+        res_mood = await db.execute(
+            select(CompanyMood).where(
+                (CompanyMood.company_id == company_id)
+                | (func.lower(CompanyMood.company_id) == company_id.lower())
+                | (func.lower(CompanyMood.company_id).contains(clean_id))
+                | (func.lower(CompanyMood.company_id).contains(short_id) if len(short_id) >= 3 else False)
+            )
+        )
         data["moods"] = res_mood.scalars().all()
 
-        res_jobs = await db.execute(select(CompanyJobEntry).where(CompanyJobEntry.company_id == company_id))
+        res_jobs = await db.execute(
+            select(CompanyJobEntry).where(
+                (CompanyJobEntry.company_id == company_id)
+                | (func.lower(CompanyJobEntry.company_id) == company_id.lower())
+                | (func.lower(CompanyJobEntry.company_id).contains(clean_id))
+            )
+        )
         data["jobs"] = res_jobs.scalars().all()
 
-        res_news = await db.execute(select(CompanyNewsEntry).where(CompanyNewsEntry.company_id == company_id))
+        res_news = await db.execute(
+            select(CompanyNewsEntry).where(
+                (CompanyNewsEntry.company_id == company_id)
+                | (func.lower(CompanyNewsEntry.company_id) == company_id.lower())
+                | (func.lower(CompanyNewsEntry.company_id).contains(clean_id))
+            )
+        )
         data["news"] = res_news.scalars().all()
 
-        res_tenders = await db.execute(select(CompanyHistoricTender).where(CompanyHistoricTender.company_id == company_id))
+        res_tenders = await db.execute(
+            select(CompanyHistoricTender).where(
+                (CompanyHistoricTender.company_id == company_id)
+                | (func.lower(CompanyHistoricTender.company_id) == company_id.lower())
+                | (func.lower(CompanyHistoricTender.company_id).contains(clean_id))
+            )
+        )
         data["historic_tenders"] = res_tenders.scalars().all()
 
-        res_ins = await db.execute(select(CompanyInsolvency).where(CompanyInsolvency.company_id == company_id))
+        res_ins = await db.execute(
+            select(CompanyInsolvency).where(
+                (CompanyInsolvency.company_id == company_id)
+                | (func.lower(CompanyInsolvency.company_id) == company_id.lower())
+                | (func.lower(CompanyInsolvency.company_id).contains(clean_id))
+            )
+        )
         data["insolvency"] = res_ins.scalars().first()
     except Exception as e:
         logger.warning(f"Error fetching DB company data for {company_name}: {e}")
@@ -286,8 +327,64 @@ def build_24_month_timeline(articles: list[dict]) -> list[dict]:
     return result
 
 
+GERMAN_MONTH_MAP = {
+    "januar": "01", "jan": "01",
+    "februar": "02", "feb": "02",
+    "märz": "03", "maerz": "03", "mär": "03",
+    "april": "04", "apr": "04",
+    "mai": "05",
+    "juni": "06", "jun": "06",
+    "juli": "07", "jul": "07",
+    "august": "08", "aug": "08",
+    "september": "09", "sep": "09", "sept": "09",
+    "oktober": "10", "okt": "10",
+    "november": "11", "nov": "11",
+    "dezember": "12", "dez": "12",
+}
+
+
+def parse_published_ym(pub: str) -> str | None:
+    if not pub or not isinstance(pub, str):
+        return None
+    pub = pub.strip()
+
+    # 1. German Month + Year (e.g., "Juli 2026", "Mai 2025", "Dezember 2024")
+    m_pat = r"(januar|februar|märz|maerz|april|mai|juni|juli|august|september|oktober|november|dezember|jan|feb|mär|apr|jun|jul|aug|sep|sept|okt|nov|dez)"
+    match_de = re.search(rf"{m_pat}\s+(\d{{4}})", pub, flags=re.IGNORECASE)
+    if match_de:
+        m_str = match_de.group(1).lower()
+        y = int(match_de.group(2))
+        m_num = GERMAN_MONTH_MAP.get(m_str, "01")
+        if 1990 <= y <= 2030:
+            return f"{y:04d}-{m_num}"
+
+    # 2. DD.MM.YYYY (e.g., "15.07.2026")
+    match_dot = re.search(r"(\d{1,2})[.](\d{1,2})[.](\d{4})", pub)
+    if match_dot:
+        y = int(match_dot.group(3))
+        m = int(match_dot.group(2))
+        if 1990 <= y <= 2030 and 1 <= m <= 12:
+            return f"{y:04d}-{m:02d}"
+
+    # 3. YYYY-MM or YYYY-MM-DD (e.g., "2026-07-15")
+    match_iso = re.search(r"(\d{4})[-/](\d{1,2})", pub)
+    if match_iso:
+        y = int(match_iso.group(1))
+        m = int(match_iso.group(2))
+        if 1990 <= y <= 2030 and 1 <= m <= 12:
+            return f"{y:04d}-{m:02d}"
+
+    # 4. Fallback: Year (e.g., "Hat bis 2024 im Bereich...")
+    match_year = re.search(r"\b(20\d{2})\b", pub)
+    if match_year:
+        y = int(match_year.group(1))
+        return f"{y:04d}-06"
+
+    return None
+
+
 def calculate_scarf_monthly_timeline(moods: list[Any]) -> list[dict]:
-    """Aggregates SCARF model scores by month over a 24-month window."""
+    """Aggregates SCARF model scores by month over a 24-month window using real comment dates."""
     now = datetime.now(UTC)
     months = []
     curr_year = now.year
@@ -315,16 +412,15 @@ def calculate_scarf_monthly_timeline(moods: list[Any]) -> list[dict]:
 
     for item in moods:
         pub = getattr(item, "published_date", None) or (item.get("published_date") if isinstance(item, dict) else "") or ""
-        ym = None
-        if len(pub) >= 7 and pub[:4].isdigit() and pub[4] in ("-", ".") and pub[5:7].isdigit():
-            ym = f"{pub[:4]}-{pub[5:7]}"
-        elif "." in pub and len(pub.split(".")) >= 3:
-            parts = pub.split(".")
-            if len(parts[2]) >= 4 and parts[2][:4].isdigit() and parts[1].isdigit():
-                ym = f"{parts[2][:4]}-{int(parts[1]):02d}"
+        crawled = getattr(item, "crawled_date", None) or (item.get("crawled_date") if isinstance(item, dict) else "") or ""
 
+        ym = parse_published_ym(str(pub))
+        if not ym and crawled:
+            ym = str(crawled)[:7]
+
+        # Only place in bucket if within the 24-month window (do NOT dump into current month)
         if not ym or ym not in buckets:
-            ym = months[-1]
+            continue
 
         s_status = getattr(item, "scarf_status", None) if not isinstance(item, dict) else item.get("scarf_status")
         s_certainty = getattr(item, "scarf_certainty", None) if not isinstance(item, dict) else item.get("scarf_certainty")
