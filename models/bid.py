@@ -380,6 +380,17 @@ class CompanyMood(Base):
     salary_benefits_review_count: Mapped[int | None] = mapped_column(Integer)
     source_platform: Mapped[str | None] = mapped_column(String(50), default="kununu")
 
+    # SCARF Model Enrichment (0 - 100 Pkt scale for the 5 dimensions)
+    scarf_status: Mapped[float | None] = mapped_column(Float, nullable=True)
+    scarf_certainty: Mapped[float | None] = mapped_column(Float, nullable=True)
+    scarf_autonomy: Mapped[float | None] = mapped_column(Float, nullable=True)
+    scarf_relatedness: Mapped[float | None] = mapped_column(Float, nullable=True)
+    scarf_fairness: Mapped[float | None] = mapped_column(Float, nullable=True)
+    scarf_primary_threat: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    scarf_primary_reward: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    scarf_enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    scarf_rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+
 
 class CompanyRegisterEntry(Base):
     """Financial/Register entry extracted from Bundesanzeiger."""

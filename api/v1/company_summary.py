@@ -1,6 +1,7 @@
 import logging
 import os
 from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 from core.database import get_db
@@ -232,6 +233,7 @@ async def run_stage1_solvency(company_name: str, is_aor: bool, db: AsyncSession 
             "management_rating": mgmt,
             "retention_score": retention,
             "kununu_url": discovered.get("kununu_url"),
+            "scarf_timeline": calculate_scarf_monthly_timeline(moods)
         },
         "red_flag_banners": red_flags
     }
@@ -279,6 +281,91 @@ def build_24_month_timeline(articles: list[dict]) -> list[dict]:
             "year_month": m,
             "avg_score": avg,
             "article_count": cnt
+        })
+
+    return result
+
+
+def calculate_scarf_monthly_timeline(moods: list[Any]) -> list[dict]:
+    """Aggregates SCARF model scores by month over a 24-month window."""
+    now = datetime.now(UTC)
+    months = []
+    curr_year = now.year
+    curr_month = now.month
+
+    for i in range(23, -1, -1):
+        m = curr_month - i
+        y = curr_year
+        while m <= 0:
+            m += 12
+            y -= 1
+        months.append(f"{y:04d}-{m:02d}")
+
+    buckets = {
+        m: {
+            "status": [],
+            "certainty": [],
+            "autonomy": [],
+            "relatedness": [],
+            "fairness": [],
+            "count": 0
+        }
+        for m in months
+    }
+
+    for item in moods:
+        pub = getattr(item, "published_date", None) or (item.get("published_date") if isinstance(item, dict) else "") or ""
+        ym = None
+        if len(pub) >= 7 and pub[:4].isdigit() and pub[4] in ("-", ".") and pub[5:7].isdigit():
+            ym = f"{pub[:4]}-{pub[5:7]}"
+        elif "." in pub and len(pub.split(".")) >= 3:
+            parts = pub.split(".")
+            if len(parts[2]) >= 4 and parts[2][:4].isdigit() and parts[1].isdigit():
+                ym = f"{parts[2][:4]}-{int(parts[1]):02d}"
+
+        if not ym or ym not in buckets:
+            ym = months[-1]
+
+        s_status = getattr(item, "scarf_status", None) if not isinstance(item, dict) else item.get("scarf_status")
+        s_certainty = getattr(item, "scarf_certainty", None) if not isinstance(item, dict) else item.get("scarf_certainty")
+        s_autonomy = getattr(item, "scarf_autonomy", None) if not isinstance(item, dict) else item.get("scarf_autonomy")
+        s_relatedness = getattr(item, "scarf_relatedness", None) if not isinstance(item, dict) else item.get("scarf_relatedness")
+        s_fairness = getattr(item, "scarf_fairness", None) if not isinstance(item, dict) else item.get("scarf_fairness")
+
+        # Fallback if SCARF score not explicitly set
+        if s_status is None:
+            r = getattr(item, "rating", None) if not isinstance(item, dict) else item.get("rating")
+            base = float((r - 1.0) / 4.0 * 80.0 + 10.0) if (r is not None and 1.0 <= r <= 5.0) else 50.0
+            s_status = s_certainty = s_autonomy = s_relatedness = s_fairness = base
+
+        buckets[ym]["status"].append(s_status)
+        buckets[ym]["certainty"].append(s_certainty)
+        buckets[ym]["autonomy"].append(s_autonomy)
+        buckets[ym]["relatedness"].append(s_relatedness)
+        buckets[ym]["fairness"].append(s_fairness)
+        buckets[ym]["count"] += 1
+
+    result = []
+    for m in months:
+        b = buckets[m]
+        cnt = b["count"]
+        st = round(sum(b["status"]) / len(b["status"]), 1) if b["status"] else 50.0
+        ce = round(sum(b["certainty"]) / len(b["certainty"]), 1) if b["certainty"] else 50.0
+        au = round(sum(b["autonomy"]) / len(b["autonomy"]), 1) if b["autonomy"] else 50.0
+        re = round(sum(b["relatedness"]) / len(b["relatedness"]), 1) if b["relatedness"] else 50.0
+        fa = round(sum(b["fairness"]) / len(b["fairness"]), 1) if b["fairness"] else 50.0
+
+        avg = round((st + ce + au + re + fa) / 5.0, 1)
+
+        result.append({
+            "year_month": m,
+            "status": st,
+            "certainty": ce,
+            "autonomy": au,
+            "relatedness": re,
+            "fairness": fa,
+            "avg_score": avg,
+            "comment_count": cnt
         })
 
     return result
