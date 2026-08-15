@@ -39,6 +39,9 @@ class CompanyNorthDataSchema(BaseModel):
     ownership: list | dict | None = None
     svg_diagrams: list | dict | None = None
     source_url: str | None = None
+    is_valid_profile: bool | None = True
+    no_profile_found: bool | None = False
+    no_profile_reason: str | None = None
     crawled_date: datetime
 
     class Config:
@@ -133,6 +136,9 @@ async def scrape_company_northdata(company_id: str, request: ScrapeNorthDataRequ
             ownership=scraped_data.get("ownership"),
             svg_diagrams=scraped_data.get("svg_diagrams"),
             source_url=request.url,
+            is_valid_profile=scraped_data.get("is_valid_profile", True),
+            no_profile_found=scraped_data.get("no_profile_found", False),
+            no_profile_reason=scraped_data.get("no_profile_reason"),
             crawled_date=datetime.now(UTC),
         )
         db.add(entry)
@@ -164,6 +170,9 @@ async def scrape_company_northdata(company_id: str, request: ScrapeNorthDataRequ
         entry.ownership = scraped_data.get("ownership") or entry.ownership
         entry.svg_diagrams = scraped_data.get("svg_diagrams") or entry.svg_diagrams
         entry.source_url = request.url
+        entry.is_valid_profile = scraped_data.get("is_valid_profile", True)
+        entry.no_profile_found = scraped_data.get("no_profile_found", False)
+        entry.no_profile_reason = scraped_data.get("no_profile_reason")
         entry.crawled_date = datetime.now(UTC)
 
     try:

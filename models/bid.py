@@ -515,6 +515,9 @@ class CompanyNorthData(Base):
     ownership: Mapped[dict | list | None] = mapped_column(JSON)
     svg_diagrams: Mapped[dict | list | None] = mapped_column(JSON)
     source_url: Mapped[str | None] = mapped_column(String(1000))
+    is_valid_profile: Mapped[bool | None] = mapped_column(Boolean, default=True)
+    no_profile_found: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    no_profile_reason: Mapped[str | None] = mapped_column(Text)
     crawled_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 

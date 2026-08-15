@@ -48,3 +48,32 @@ async def test_company_northdata_persistence_and_fields():
         assert saved.financials[0]["revenue"] == "810,4 Mio. €"
         assert saved.ownership[0]["shareholder"] == "Dr. Ing. h.c. F. Porsche AG"
         assert saved.officers[0]["name"] == "Federico Magno"
+        assert saved.is_valid_profile is True or saved.is_valid_profile is None
+        assert saved.no_profile_found is False or saved.no_profile_found is None
+
+
+@pytest.mark.asyncio
+async def test_company_northdata_no_profile_persistence():
+    async with SessionLocal() as db_session:
+        data = CompanyNorthData(
+            company_id="Bundesministerium für Forschung, Technologie und Raumfahrt",
+            company_name=None,
+            is_valid_profile=False,
+            no_profile_found=True,
+            no_profile_reason="No North Data profile available for this entity",
+            source_url="https://www.northdata.de/Bundesministerium%20f%C3%BCr%20Forschung%2C%20Technologie%20und%20Raumfahrt",
+            crawled_date=datetime.now(UTC),
+        )
+        db_session.add(data)
+        await db_session.commit()
+
+        res = await db_session.execute(
+            select(CompanyNorthData).where(CompanyNorthData.company_id == "Bundesministerium für Forschung, Technologie und Raumfahrt")
+        )
+        saved = res.scalars().first()
+
+        assert saved is not None
+        assert saved.is_valid_profile is False
+        assert saved.no_profile_found is True
+        assert saved.no_profile_reason == "No North Data profile available for this entity"
+

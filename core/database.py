@@ -156,6 +156,9 @@ async def init_db() -> None:
                 ("balance_sheet", "JSON"),
                 ("financials", "JSON"),
                 ("ownership", "JSON"),
+                ("is_valid_profile", "BOOLEAN"),
+                ("no_profile_found", "BOOLEAN"),
+                ("no_profile_reason", "TEXT"),
             ]:
                 if col not in existing_cols:
                     await conn.execute(text(f"ALTER TABLE bid_company_northdata ADD COLUMN {col} {col_type}"))
