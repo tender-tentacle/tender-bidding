@@ -25,12 +25,19 @@ async def test_tagesschau_news_umweltbundesamt_extraction():
         assert len(headlines) > 0
         assert not any("Ziel-Auftraggeber" in h for h in headlines)
 
+        # Verify articles array is populated with links
+        articles = news_scan.get("articles", [])
+        assert len(articles) > 0
+        assert "title" in articles[0]
+        assert "link" in articles[0]
+
         # GET request must return cached summary with valid company_name and news scan
         res_get = await client.get(f"/bids/{bid_id}/company-summary")
         assert res_get.status_code == 200
         data_get = res_get.json()
         assert data_get["company_name"] == company_name
         assert data_get["tagesschau_news_scan"]["articles_found"] > 0
+        assert len(data_get["tagesschau_news_scan"].get("articles", [])) > 0
 
 
 @pytest.mark.asyncio

@@ -237,46 +237,113 @@ async def run_stage1_solvency(company_name: str, is_aor: bool, db: AsyncSession 
     }
 
 
-async def run_stage2_implicit_needs(company_name: str, db: AsyncSession | None = None) -> dict:
-    db_data = await get_company_db_data(company_name, db)
-    jobs: list[CompanyJobEntry] = db_data.get("jobs") or []
+def build_24_month_timeline(articles: list[dict]) -> list[dict]:
+    now = datetime.now(UTC)
+    months = []
+    curr_year = now.year
+    curr_month = now.month
 
+    for i in range(23, -1, -1):
+        m = curr_month - i
+        y = curr_year
+        while m <= 0:
+            m += 12
+            y -= 1
+        months.append(f"{y:04d}-{m:02d}")
+
+    buckets = {m: {"scores": [], "count": 0} for m in months}
+
+    for art in articles:
+        pub = art.get("published_at") or ""
+        ym = None
+        if len(pub) >= 7 and pub[:4].isdigit() and pub[4] in ("-", ".") and pub[5:7].isdigit():
+            ym = f"{pub[:4]}-{pub[5:7]}"
+        elif "." in pub and len(pub.split(".")) >= 3:
+            parts = pub.split(".")
+            if len(parts[2]) >= 4 and parts[2][:4].isdigit() and parts[1].isdigit():
+                ym = f"{parts[2][:4]}-{int(parts[1]):02d}"
+
+        if ym not in buckets:
+            ym = months[-1]
+
+        score = art.get("sentiment_score", 50)
+        buckets[ym]["scores"].append(score)
+        buckets[ym]["count"] += 1
+
+    result = []
+    for m in months:
+        scores = buckets[m]["scores"]
+        cnt = buckets[m]["count"]
+        avg = round(sum(scores) / len(scores), 1) if scores else 50.0
+        result.append({
+            "year_month": m,
+            "avg_score": avg,
+            "article_count": cnt
+        })
+
+    return result
+
+
+async def score_articles_with_ai(articles: list[dict]) -> list[dict]:
+    ai_url = os.getenv("AI_SERVICE_URL", "http://artificial-intelligence-connector:8004")
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(
+                f"{ai_url.rstrip('/')}/api/v1/sentiment/batch-score",
+                json={"articles": [{"id": f"art-{i}", "title": a.get("title", ""), "content": a.get("content", ""), "published_date": a.get("published_at", "")} for i, a in enumerate(articles)]}
+            )
+            if resp.status_code == 200:
+                scored_map = {item["id"]: item for item in resp.json().get("scored_articles", [])}
+                for i, a in enumerate(articles):
+                    match = scored_map.get(f"art-{i}")
+                    if match:
+                        a["sentiment_score"] = match.get("sentiment_score", 50)
+                        a["sentiment_label"] = match.get("sentiment_label", "Neutral")
+                        a["sentiment_rationale"] = match.get("rationale", "")
+    except Exception as e:
+        logger.warning(f"AI connector batch sentiment call failed, falling back to rule scoring: {e}")
+
+    high_neg_kw = ["insolvenz", "korruption", "strafverfahren", "skandal", "katastrophenfall", "ermittlungen", "klage", "staatsanwaltschaft", "veruntreuung", "betrug"]
+    mod_neg_kw = ["freistellung", "wehrt sich gegen", "streik", "konflikt", "streit", "entlassung", "kritik", "verluste", "versiegen", "knappheit", "ausfall", "unfall", "schaden", "krise"]
+    high_pos_kw = ["auszeichnung", "preis", "rekord", "durchbruch", "leben retten", "retten", "antibiotika", "forschungserfolg", "gewinnt", "nachhaltigkeitspreis"]
+    mod_pos_kw = ["forschungsprojekt", "beschleunigt", "entwicklung", "innovation", "ortungssystem", "wachstum", "investition", "eröffnung", "erfolg", "erweitert", "förderung"]
+
+    for a in articles:
+        if "sentiment_score" in a:
+            continue
+        text = f"{a.get('title', '')} {a.get('content', '')}".lower()
+        if any(k in text for k in high_neg_kw):
+            a["sentiment_score"] = 15
+            a["sentiment_label"] = "Negative"
+        elif any(k in text for k in mod_neg_kw) and not any(k in text for k in high_pos_kw):
+            a["sentiment_score"] = 30
+            a["sentiment_label"] = "Negative"
+        elif any(k in text for k in high_pos_kw) and not any(k in text for k in high_neg_kw):
+            a["sentiment_score"] = 88
+            a["sentiment_label"] = "Positive"
+        elif any(k in text for k in mod_pos_kw) and not any(k in text for k in mod_neg_kw):
+            a["sentiment_score"] = 75
+            a["sentiment_label"] = "Positive"
+        else:
+            a["sentiment_score"] = 50
+            a["sentiment_label"] = "Neutral"
+
+    return articles
+
+
+async def run_stage2_market_and_news(company_name: str, db: AsyncSession | None = None) -> dict:
     hiring_radar = []
     implicit_needs = []
-    if jobs:
-        for j in jobs[:6]:
-            hiring_radar.append({
-                "title": j.title or "",
-                "category": j.employment_type or ""
-            })
-        for j in jobs[:3]:
-            implicit_needs.append({
-                "need": f"Expertise für {j.title}",
-                "source": j.title or "",
-                "relevance": "Hoch"
-            })
-
-    crawling_url = os.getenv("CRAWLING_URL", "http://127.0.0.1:8001")
     scraped_articles = []
 
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            res = await client.post(
-                f"{crawling_url}/api/v1/scrape/tagesschau",
-                json={"query": company_name},
-                timeout=10.0
-            )
-            if res.status_code == 200:
-                scraped_articles = res.json()
-    except Exception as e:
-        logger.warning(f"Could not trigger Tagesschau scraper via crawling service for {company_name}: {e}")
-
-    # Direct open-data Tagesschau Search API fallback (https://www.tagesschau.de/api2u/search/)
-    if not scraped_articles and company_name:
+    if company_name and company_name != "Ziel-Auftraggeber":
         try:
-            from core.utils import clean_company_name_candidates
-            candidates = clean_company_name_candidates(company_name)
-            headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+            candidates = [company_name]
+            clean_name = company_name.replace("GmbH", "").replace("AG", "").replace("Landesbetrieb", "").strip()
+            if clean_name and clean_name not in candidates:
+                candidates.append(clean_name)
+
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
             async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
                 for cand in candidates:
                     res = await client.get(
@@ -304,6 +371,9 @@ async def run_stage2_implicit_needs(company_name: str, db: AsyncSession | None =
         except Exception as direct_e:
             logger.warning(f"Direct Tagesschau API call failed for {company_name}: {direct_e}")
 
+    await score_articles_with_ai(scraped_articles)
+    timeline = build_24_month_timeline(scraped_articles)
+
     scandal_keywords = ["insolvenz", "ermittlungen", "skandal", "streik", "verluste", "klage", "strafverfahren", "korruption"]
     scandal_flags = []
     recent_headlines = []
@@ -318,7 +388,13 @@ async def run_stage2_implicit_needs(company_name: str, db: AsyncSession | None =
     if scandal_flags:
         sentiment = f"Kritisch / Pressemeldungen mit Risiko-Signalen ({len(scandal_flags)} Warnungen)"
     elif scraped_articles:
-        sentiment = f"Überwiegend Positiv / Neutral ({len(scraped_articles)} Artikel im 2-Jahre Fenster)"
+        avg_s = sum(a.get("sentiment_score", 50) for a in scraped_articles) / len(scraped_articles)
+        if avg_s >= 66:
+            sentiment = f"Überwiegend Positiv (ø {round(avg_s, 1)} Pkt, {len(scraped_articles)} Artikel im 2-Jahre Fenster)"
+        elif avg_s <= 35:
+            sentiment = f"Überwiegend Negativ (ø {round(avg_s, 1)} Pkt, {len(scraped_articles)} Artikel im 2-Jahre Fenster)"
+        else:
+            sentiment = f"Überwiegend Positiv / Neutral ({len(scraped_articles)} Artikel im 2-Jahre Fenster)"
     else:
         sentiment = "Keine auffälligen Pressemeldungen in den letzten 2 Jahren (Tagesschau Scan)"
 
@@ -334,10 +410,15 @@ async def run_stage2_implicit_needs(company_name: str, db: AsyncSession | None =
             "articles_found": len(scraped_articles),
             "reputation_sentiment": sentiment,
             "scandal_press_flags": scandal_flags,
-            "recent_headlines": recent_headlines[:3] if recent_headlines else [f"Keine Pressemeldungen für {company_name} im 2-Jahre Fenster verzeichnet"]
+            "recent_headlines": recent_headlines if recent_headlines else [f"Keine Pressemeldungen für {company_name} im 2-Jahre Fenster verzeichnet"],
+            "articles": scraped_articles,
+            "monthly_timeline": timeline
         }
     }
 
+
+async def run_stage2_implicit_needs(company_name: str, db: AsyncSession | None = None) -> dict:
+    return await run_stage2_market_and_news(company_name, db)
 
 async def run_stage3_procurement_pressure(company_name: str, db: AsyncSession | None = None) -> dict:
     db_data = await get_company_db_data(company_name, db)

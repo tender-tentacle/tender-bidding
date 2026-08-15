@@ -68,7 +68,7 @@ async def scrape_company_northdata(company_id: str, request: ScrapeNorthDataRequ
     Manually scrape North Data using a specific URL.
     Saves link to distributing MS and stores master data in Bidding MS.
     """
-    from urllib.parse import unquote, quote
+    from urllib.parse import quote, unquote
     company_id = unquote(company_id)
 
     target_url = (

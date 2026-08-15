@@ -430,6 +430,9 @@ class CompanyNewsEntry(Base):
     category: Mapped[str | None] = mapped_column(String(255))
     published_date: Mapped[str | None] = mapped_column(String(255))
     crawled_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    sentiment_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sentiment_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sentiment_rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class CompanyHistoricTender(Base):

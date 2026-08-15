@@ -46,7 +46,8 @@ from sqlalchemy.orm import selectinload
 
 
 async def _load(db: AsyncSession, bid_id: str) -> Bid:
-    from unittest.mock import Mock, AsyncMock, MagicMock
+    from unittest.mock import AsyncMock, MagicMock, Mock
+
     from services.bid_service import get_by_source_ref as service_get_by_source_ref
 
     bid = None
