@@ -4,7 +4,7 @@ import re
 from datetime import UTC, datetime
 
 import httpx
-from core.config import CRAWLING_MS_URL, DISTRIBUTION_MS_URL
+from core.config import AI_URL, CRAWLING_MS_URL, DISTRIBUTION_MS_URL
 from core.database import get_db
 from fastapi import APIRouter, Depends, HTTPException
 from models.bid import CompanyJobEntry, CompanyMood, CompanySalaryEntry
@@ -212,14 +212,18 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
     from urllib.parse import unquote
     company_id = unquote(company_id)
 
-    is_glassdoor = "glassdoor" in request.url.lower()
+    is_glassdoor = "glassdoor" in (request.url or "").lower() or "glassdoor" in company_id.lower()
     cleaned_url = clean_glassdoor_url(request.url) if is_glassdoor else clean_kununu_url(request.url)
+
     if not cleaned_url:
-        raise HTTPException(
-            status_code=400,
-            detail="A valid Kununu or Glassdoor URL is required to trigger employee rating scanner."
-        )
-    target_url = cleaned_url.strip()
+        clean_slug = re.sub(r"[^a-zA-Z0-9]", "-", company_id).strip("-").lower()
+        if is_glassdoor:
+            target_url = f"https://www.glassdoor.de/Bewertungen/{clean_slug}-Bewertungen"
+        else:
+            target_url = f"https://www.kununu.com/de/{clean_slug}"
+    else:
+        target_url = cleaned_url.strip()
+
     platform_name = "glassdoor" if is_glassdoor else "kununu"
 
     logger.info(f"Manual {platform_name} scrape requested for {company_id} with URL {target_url}")
@@ -246,7 +250,6 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
                 )
                 return records
 
-
     async with httpx.AsyncClient(timeout=120.0) as client:
         try:
             await client.post(
@@ -265,8 +268,10 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
 
         try:
             scrape_path = "glassdoor" if is_glassdoor else "kununu"
+            existing_count = len(records)
             crawling_response = await client.post(
-                f"{CRAWLING_MS_URL}/api/v1/scrape/{scrape_path}", json={"query": company_id, "url": target_url}
+                f"{CRAWLING_MS_URL}/api/v1/scrape/{scrape_path}",
+                json={"query": company_id, "url": target_url, "existing_count": existing_count}
             )
             if crawling_response.status_code in (402, 429):
                 err_detail = "Firecrawl API credit limit or quota reached."
@@ -277,7 +282,18 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
                 logger.error(f"Firecrawl quota limit for {company_id}: {err_detail}")
                 raise HTTPException(status_code=402, detail=err_detail)
 
-            crawling_response.raise_for_status()
+            if crawling_response.status_code != 200:
+                err_detail = f"{platform_name.capitalize()} crawl failed with HTTP {crawling_response.status_code}"
+                try:
+                    err_detail = crawling_response.json().get("detail", err_detail)
+                except Exception:
+                    pass
+                logger.error(f"{platform_name.capitalize()} crawl error for {company_id}: {err_detail}")
+                if records:
+                    logger.info(f"Returning {len(records)} cached records after crawl failure.")
+                    return records
+                raise HTTPException(status_code=502, detail=err_detail)
+
             scraped_payload = crawling_response.json()
 
             payload = scraped_payload if isinstance(scraped_payload, dict) else {"comments": scraped_payload}
@@ -291,6 +307,8 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
         except Exception as e:
             import traceback
             logger.error(f"Scraping failed or blocked for {company_id}: {e}\n{traceback.format_exc()}")
+            if records:
+                return records
 
     new_moods = []
     for comment in scraped_comments:
@@ -425,6 +443,13 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
         await db.rollback()
         raise HTTPException(status_code=500, detail="Database error while saving mood")
 
+    # Automatically run on-the-fly SCARF AI enrichment for newly scraped comments
+    try:
+        await enrich_company_mood_scarf(company_id=company_id, db=db)
+        logger.info(f"On-the-fly SCARF enrichment completed for '{company_id}'.")
+    except Exception as exc:
+        logger.warning(f"On-the-fly SCARF enrichment failed for '{company_id}': {exc}")
+
     result = await db.execute(select(CompanyMood).where(func.lower(CompanyMood.company_id) == company_id.lower()))
     all_moods = result.scalars().all()
     logger.error(f"DEBUG_SCRAPE: company_id='{company_id}', new_moods={len(new_moods)}, all_moods={len(all_moods)}")
@@ -519,7 +544,19 @@ async def ingest_browser_crawl(
     metadata = payload.metadata.model_dump()
     new_moods: list[CompanyMood] = []
 
+    target_platform = "kununu"
+    disc_url = (metadata.get("discovered_url") or "").lower()
+    src_platform = (metadata.get("source_platform") or "").lower()
+    if "glassdoor" in disc_url or "glassdoor" in src_platform:
+        target_platform = "glassdoor"
+
     for comment in payload.comments:
+        c_url = (comment.source_url or "").lower()
+        if "glassdoor" in c_url:
+            comment_platform = "glassdoor"
+        else:
+            comment_platform = target_platform
+
         raw_hash = comment.comment_hash or f"{comment.title}_{comment.content}_{comment.published_date}"
         comment_hash = hashlib.sha256(f"{company_id}_{raw_hash}".encode()).hexdigest()
 
@@ -548,7 +585,7 @@ async def ingest_browser_crawl(
             existing.salary_satisfaction_review_count = metadata.get("salary_satisfaction_review_count")
             existing.salary_benefits_score = metadata.get("salary_benefits_score")
             existing.salary_benefits_review_count = metadata.get("salary_benefits_review_count")
-            existing.source_platform = "kununu"
+            existing.source_platform = comment_platform
             existing.crawled_date = datetime.now(UTC)
             continue
 
@@ -575,7 +612,7 @@ async def ingest_browser_crawl(
             salary_satisfaction_review_count=metadata.get("salary_satisfaction_review_count"),
             salary_benefits_score=metadata.get("salary_benefits_score"),
             salary_benefits_review_count=metadata.get("salary_benefits_review_count"),
-            source_platform="kununu",
+            source_platform=comment_platform,
             crawled_date=datetime.now(UTC),
         )
         db.add(mood)
@@ -648,6 +685,13 @@ async def ingest_browser_crawl(
         logger.error(f"Error in browser-relay ingest for '{company_id}': {e}")
         await db.rollback()
         raise HTTPException(status_code=500, detail="Database error while ingesting browser relay data")
+
+    # Automatically run on-the-fly SCARF AI enrichment for ingested comments
+    try:
+        await enrich_company_mood_scarf(company_id=company_id, db=db)
+        logger.info(f"On-the-fly SCARF enrichment completed after ingest for '{company_id}'.")
+    except Exception as exc:
+        logger.warning(f"On-the-fly SCARF enrichment failed after ingest for '{company_id}': {exc}")
 
     result = await db.execute(
         select(CompanyMood).where(func.lower(CompanyMood.company_id) == company_id.lower())
@@ -735,15 +779,26 @@ async def enrich_company_mood_scarf(
             "id": c_id,
             "title": m.title or "",
             "content": m.content or m.summary_text or "",
-            "rating": m.overall_score or m.rating or 3.0
+            "rating": m.rating or m.overall_score or 3.0
         })
+
+    # Fetch configurable versioned prompt template from bidding prompt_config
+    prompt_template = None
+    try:
+        from services.prompt_config import current_template
+        prompt_template = await current_template(db, "bidding_scarf_enrichment")
+    except Exception as exc:
+        logger.debug(f"Could not load bidding_scarf_enrichment prompt template: {exc}")
 
     enriched_map = {}
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
             ai_res = await client.post(
-                f"{AI_MS_URL}/api/v1/enrich/scarf",
-                json={"comments": comment_inputs}
+                f"{AI_URL}/api/v1/enrich/scarf",
+                json={
+                    "comments": comment_inputs,
+                    "prompt_template": prompt_template
+                }
             )
             if ai_res.status_code == 200:
                 data = ai_res.json()
@@ -753,7 +808,10 @@ async def enrich_company_mood_scarf(
             logger.warning(f"AI MS SCARF enrichment failed, falling back to local extractor: {err}")
 
     # Fallback to local extract_scarf_dimensions if AI MS call wasn't available
-    from artificial_intelligence_connector.core.scarf_extractor import extract_scarf_dimensions  # type: ignore
+    try:
+        from artificial_intelligence_connector.core.scarf_extractor import extract_scarf_dimensions  # type: ignore
+    except ModuleNotFoundError:
+        extract_scarf_dimensions = None
 
     updated_count = 0
     now_utc = datetime.now(UTC)
@@ -764,32 +822,35 @@ async def enrich_company_mood_scarf(
 
         if res_data and "scarf_scores" in res_data:
             s_scores = res_data["scarf_scores"]
-            m.scarf_status = float(s_scores.get("status", 50.0))
-            m.scarf_certainty = float(s_scores.get("certainty", 50.0))
-            m.scarf_autonomy = float(s_scores.get("autonomy", 50.0))
-            m.scarf_relatedness = float(s_scores.get("relatedness", 50.0))
-            m.scarf_fairness = float(s_scores.get("fairness", 50.0))
+            m.scarf_status = float(s_scores["status"]) if s_scores.get("status") is not None else None
+            m.scarf_certainty = float(s_scores["certainty"]) if s_scores.get("certainty") is not None else None
+            m.scarf_autonomy = float(s_scores["autonomy"]) if s_scores.get("autonomy") is not None else None
+            m.scarf_relatedness = float(s_scores["relatedness"]) if s_scores.get("relatedness") is not None else None
+            m.scarf_fairness = float(s_scores["fairness"]) if s_scores.get("fairness") is not None else None
             m.scarf_primary_threat = res_data.get("primary_threat")
             m.scarf_primary_reward = res_data.get("primary_reward")
             m.scarf_rationale = res_data.get("rationale")
             m.scarf_enriched_at = now_utc
             updated_count += 1
-        else:
+        elif extract_scarf_dimensions:
             local_res = extract_scarf_dimensions(
                 title=m.title,
                 content=m.content or m.summary_text,
-                rating=m.overall_score or m.rating or 3.0
+                rating=m.rating or m.overall_score or 3.0
             )
-            m.scarf_status = float(local_res["status"])
-            m.scarf_certainty = float(local_res["certainty"])
-            m.scarf_autonomy = float(local_res["autonomy"])
-            m.scarf_relatedness = float(local_res["relatedness"])
-            m.scarf_fairness = float(local_res["fairness"])
-            m.scarf_primary_threat = local_res.get("primary_threat")
-            m.scarf_primary_reward = local_res.get("primary_reward")
-            m.scarf_rationale = local_res.get("rationale")
-            m.scarf_enriched_at = now_utc
-            updated_count += 1
+            if local_res and isinstance(local_res, dict):
+                m.scarf_status = float(local_res["status"]) if local_res.get("status") is not None else None
+                m.scarf_certainty = float(local_res["certainty"]) if local_res.get("certainty") is not None else None
+                m.scarf_autonomy = float(local_res["autonomy"]) if local_res.get("autonomy") is not None else None
+                m.scarf_relatedness = float(local_res["relatedness"]) if local_res.get("relatedness") is not None else None
+                m.scarf_fairness = float(local_res["fairness"]) if local_res.get("fairness") is not None else None
+                m.scarf_primary_threat = local_res.get("primary_threat")
+                m.scarf_primary_reward = local_res.get("primary_reward")
+                m.scarf_rationale = local_res.get("rationale")
+                m.scarf_enriched_at = now_utc
+                updated_count += 1
+        else:
+            logger.info(f"No AI SCARF enrichment response available for comment {c_id}. Skipping mock data creation.")
 
     await db.commit()
 

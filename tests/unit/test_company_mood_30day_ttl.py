@@ -19,7 +19,6 @@ async def test_company_mood_30day_ttl_override_behavior():
     res2 = MagicMock()
     res2.scalars.return_value.first.return_value = None
 
-    # Create mock result for query 3 (final return -> returns newly added mood)
     new_mood = CompanyMood(
         id="new-1",
         company_id="HOCH Health Ostschweiz",
@@ -37,10 +36,12 @@ async def test_company_mood_30day_ttl_override_behavior():
         summary_text="Seit 2009 haben 435...",
         industry_score=3.6,
     )
-    res3 = MagicMock()
-    res3.scalars.return_value.all.return_value = [new_mood]
 
-    mock_db.execute.side_effect = [res1, res2, res3]
+    res_default = MagicMock()
+    res_default.scalars.return_value.all.return_value = [new_mood]
+    res_default.scalars.return_value.first.return_value = None
+
+    mock_db.execute.side_effect = [res1, res2, res_default, res_default, res_default, res_default]
 
     mock_crawling_resp = MagicMock()
     mock_crawling_resp.status_code = 200
