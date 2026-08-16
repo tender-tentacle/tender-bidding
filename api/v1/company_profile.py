@@ -6,7 +6,7 @@ import httpx
 from core.database import Base, get_db
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import Column, DateTime, String, select
+from sqlalchemy import Column, DateTime, String, Text, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)

@@ -541,19 +541,11 @@ async def run_stage2_market_and_news(company_name: str, db: AsyncSession | None 
         try:
             from core.utils import clean_company_name_candidates
             candidates = clean_company_name_candidates(company_name)
-            if company_name not in candidates:
-                candidates.insert(0, company_name)
-
-            search_queries = list(candidates)
-            # Add context-specific search queries for short acronyms like MHP
-            if len(company_name.strip()) <= 5:
-                search_queries.insert(0, f"{company_name} Porsche")
-                search_queries.insert(1, f"{company_name} Beratung")
-                search_queries.insert(2, f"{company_name} GmbH")
 
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
             async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
-                for cand in search_queries:
+                for cand in candidates:
+                    raw_articles = []
                     res = await client.get(
                         "https://www.tagesschau.de/api2u/search/",
                         params={"searchText": cand, "resultPage": 0, "pageSize": 30},
@@ -568,20 +560,23 @@ async def run_stage2_market_and_news(company_name: str, db: AsyncSession | None 
                             share_url = item.get("detailsweb") or item.get("shareURL") or item.get("url") or ""
                             pub_str = item.get("date") or item.get("sophoraCreated") or ""
                             if title:
-                                scraped_articles.append({
+                                raw_articles.append({
                                     "title": title,
                                     "link": share_url,
                                     "content": details,
                                     "published_at": pub_str
                                 })
-                        if scraped_articles:
+
+                    if raw_articles:
+                        await score_articles_with_ai(raw_articles, company_name, db=db)
+                        relevant_articles = [a for a in raw_articles if a.get("is_relevant", True) is not False]
+                        if relevant_articles:
+                            scraped_articles = relevant_articles
+                            logger.info(f"Tagesschau search query candidate '{cand}' returned {len(relevant_articles)} relevant articles after AI cleansing.")
                             break
         except Exception as direct_e:
             logger.warning(f"Direct Tagesschau API call failed for {company_name}: {direct_e}")
 
-    await score_articles_with_ai(scraped_articles, company_name, db=db)
-    # Filter out irrelevant non-company news articles (e.g. political party MHP in Turkey)
-    scraped_articles = [a for a in scraped_articles if a.get("is_relevant", True) is not False]
     timeline = build_24_month_timeline(scraped_articles)
 
     scandal_keywords = ["insolvenz", "ermittlungen", "skandal", "streik", "verluste", "klage", "strafverfahren", "korruption"]
