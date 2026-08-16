@@ -18,48 +18,8 @@ try:
         scrape_company_subsidies_on_the_fly,
     )
 except ImportError:
-    import hashlib
-    import urllib.parse
     def scrape_company_subsidies_on_the_fly(company_name: str) -> list[dict[str, Any]]:
-        if not company_name or not company_name.strip():
-            return []
-        c_clean = company_name.strip()
-        encoded = urllib.parse.quote(c_clean)
-        return [
-            {
-                "id": hashlib.md5(f"grant-1-{c_clean}".encode()).hexdigest()[:12],
-                "company_name": c_clean,
-                "project_title": f"Förderdatenbank des Bundes — Origin Search ({c_clean})",
-                "funding_program": "Förderdatenbank des Bundes (BMWK / BMWi Registry)",
-                "granting_authority": "Bundesministerium für Wirtschaft und Klimaschutz",
-                "amount_eur": 0.0,
-                "approval_year": 2024,
-                "source_url": f"https://www.foerderdatenbank.de/site-search.html?query={encoded}",
-                "description": f"Direkte Abfrage der offiziellen Förderdatenbank des Bundes für Förderprogramme und Zuwendungen von {c_clean}."
-            },
-            {
-                "id": hashlib.md5(f"grant-2-{c_clean}".encode()).hexdigest()[:12],
-                "company_name": c_clean,
-                "project_title": f"EFRE NRW Projektdatenbank — Origin Search ({c_clean})",
-                "funding_program": "EFRE NRW / EU-Strukturfonds Projektdatenbank",
-                "granting_authority": "Ministerium für Wirtschaft, Industrie, Klimaschutz und Energie NRW",
-                "amount_eur": 0.0,
-                "approval_year": 2024,
-                "source_url": f"https://www.efre.nrw.de/projekte/projektdatenbank/?tx_solr%5Bq%5D={encoded}",
-                "description": f"Verifizierte Projektdatenbank des Europäischen Fonds für regionale Entwicklung (EFRE NRW) für {c_clean}."
-            },
-            {
-                "id": hashlib.md5(f"grant-3-{c_clean}".encode()).hexdigest()[:12],
-                "company_name": c_clean,
-                "project_title": f"ZIM Innovationsnetzwerk — Origin Search ({c_clean})",
-                "funding_program": "Zentrales Innovationsprogramm Mittelstand (ZIM)",
-                "granting_authority": "Bundesministerium für Wirtschaft und Klimaschutz (BMWK)",
-                "amount_eur": 0.0,
-                "approval_year": 2023,
-                "source_url": f"https://www.zim.de/ZIM/Navigation/DE/Infothek/Projektbeispiele/projektbeispiele.html?query={encoded}",
-                "description": f"Offizielles Projekt- und Netzwerkregister des ZIM-Innovationsprogramms für {c_clean}."
-            }
-        ]
+        return []
 
 logger = logging.getLogger(__name__)
 

@@ -428,40 +428,9 @@ def calculate_scarf_monthly_timeline(moods: list[Any]) -> list[dict]:
         s_relatedness = getattr(item, "scarf_relatedness", None) if not isinstance(item, dict) else item.get("scarf_relatedness")
         s_fairness = getattr(item, "scarf_fairness", None) if not isinstance(item, dict) else item.get("scarf_fairness")
 
-        # Fallback if SCARF score not explicitly set: derive from sub-scores and keywords
+        # Only aggregate genuine AI-enriched SCARF scores (no synthetic dummy calculations)
         if s_status is None or s_certainty is None:
-            r = getattr(item, "rating", None) if not isinstance(item, dict) else item.get("rating")
-            overall_b = float((r - 1.0) / 4.0 * 80.0 + 10.0) if (r is not None and 1.0 <= r <= 5.0) else 50.0
-
-            def scale_sub(val: Any, default: float) -> float:
-                if val is not None and isinstance(val, (int, float)) and 1.0 <= val <= 5.0:
-                    return float((val - 1.0) / 4.0 * 80.0 + 10.0)
-                return default
-
-            culture_b = scale_sub(getattr(item, "score_culture", None) if not isinstance(item, dict) else item.get("score_culture"), overall_b)
-            career_b = scale_sub(getattr(item, "score_career", None) if not isinstance(item, dict) else item.get("score_career"), overall_b)
-            env_b = scale_sub(getattr(item, "score_environment", None) if not isinstance(item, dict) else item.get("score_environment"), overall_b)
-            div_b = scale_sub(getattr(item, "score_diversity", None) if not isinstance(item, dict) else item.get("score_diversity"), overall_b)
-
-            title_str = getattr(item, "title", None) or (item.get("title") if isinstance(item, dict) else "") or ""
-            content_str = getattr(item, "content", None) or (item.get("content") if isinstance(item, dict) else "") or ""
-            text = f"{title_str} {content_str}".lower()
-
-            def calc_dim(base: float, rewards: list[str], threats: list[str]) -> float:
-                score = base
-                for w in rewards:
-                    if w in text:
-                        score += 15.0
-                for w in threats:
-                    if w in text:
-                        score -= 15.0
-                return max(10.0, min(90.0, round(score, 1)))
-
-            s_status = calc_dim(career_b, ["lob", "anerkennung", "wertschätzung", "aufstieg", "respekt", "gefördert", "karriere"], ["kein lob", "abwertung", "mikromanagement", "druck", "überheblich"])
-            s_certainty = calc_dim(env_b, ["klarheit", "transparenz", "sicher", "vorhersehbar", "strukturiert"], ["unsicherheit", "chaos", "keine infos", "unruhe", "umstrukturierung", "richtungslos", "ungewiss"])
-            s_autonomy = calc_dim((career_b + env_b) / 2.0, ["freiraum", "vertrauen", "homeoffice", "selbstbestimmt", "flexibel", "entscheidungsspielraum"], ["mikromanagement", "kontrolle", "überwachung", "bürokratie", "keine freiheit", "abgesegnet"])
-            s_relatedness = calc_dim(culture_b, ["zusammenhalt", "kollegen", "team", "freundlich", "wir-gefühl", "hilfsbereit"], ["silos", "gegeneinander", "ellbogen", "mobbing", "ausgrenzung", "spaltung"])
-            s_fairness = calc_dim(div_b, ["fair", "gerecht", "gleichbehandlung", "angemessen", "ehrlich"], ["unfair", "ungleichbehandlung", "vetterliwirtschaft", "lieblinge", "ausbeutung"])
+            continue
 
         buckets[ym]["status"].append(s_status)
         buckets[ym]["certainty"].append(s_certainty)
@@ -474,13 +443,13 @@ def calculate_scarf_monthly_timeline(moods: list[Any]) -> list[dict]:
     for m in months:
         b = buckets[m]
         cnt = b["count"]
-        st = round(sum(b["status"]) / len(b["status"]), 1) if b["status"] else 50.0
-        ce = round(sum(b["certainty"]) / len(b["certainty"]), 1) if b["certainty"] else 50.0
-        au = round(sum(b["autonomy"]) / len(b["autonomy"]), 1) if b["autonomy"] else 50.0
-        re = round(sum(b["relatedness"]) / len(b["relatedness"]), 1) if b["relatedness"] else 50.0
-        fa = round(sum(b["fairness"]) / len(b["fairness"]), 1) if b["fairness"] else 50.0
+        st = round(sum(b["status"]) / len(b["status"]), 1) if b["status"] else 0.0
+        ce = round(sum(b["certainty"]) / len(b["certainty"]), 1) if b["certainty"] else 0.0
+        au = round(sum(b["autonomy"]) / len(b["autonomy"]), 1) if b["autonomy"] else 0.0
+        re = round(sum(b["relatedness"]) / len(b["relatedness"]), 1) if b["relatedness"] else 0.0
+        fa = round(sum(b["fairness"]) / len(b["fairness"]), 1) if b["fairness"] else 0.0
 
-        avg = round((st + ce + au + re + fa) / 5.0, 1)
+        avg = round((st + ce + au + re + fa) / 5.0, 1) if b["status"] else 0.0
 
         result.append({
             "year_month": m,
@@ -496,13 +465,25 @@ def calculate_scarf_monthly_timeline(moods: list[Any]) -> list[dict]:
     return result
 
 
-async def score_articles_with_ai(articles: list[dict]) -> list[dict]:
+async def score_articles_with_ai(articles: list[dict], company_name: str = "", db: AsyncSession | None = None) -> list[dict]:
     ai_url = os.getenv("AI_SERVICE_URL", "http://artificial-intelligence-connector:8004")
+    prompt_template = None
+    if db is not None:
+        try:
+            from services.prompt_config import current_template
+            prompt_template = await current_template(db, "bidding_news_relevance_sentiment")
+        except Exception as exc:
+            logger.debug(f"Could not load bidding_news_relevance_sentiment prompt template: {exc}")
+
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.post(
                 f"{ai_url.rstrip('/')}/api/v1/sentiment/batch-score",
-                json={"articles": [{"id": f"art-{i}", "title": a.get("title", ""), "content": a.get("content", ""), "published_date": a.get("published_at", "")} for i, a in enumerate(articles)]}
+                json={
+                    "company_name": company_name,
+                    "prompt_template": prompt_template,
+                    "articles": [{"id": f"art-{i}", "title": a.get("title", ""), "content": a.get("content", ""), "published_date": a.get("published_at", "")} for i, a in enumerate(articles)]
+                }
             )
             if resp.status_code == 200:
                 scored_map = {item["id"]: item for item in resp.json().get("scored_articles", [])}
@@ -512,6 +493,7 @@ async def score_articles_with_ai(articles: list[dict]) -> list[dict]:
                         a["sentiment_score"] = match.get("sentiment_score", 50)
                         a["sentiment_label"] = match.get("sentiment_label", "Neutral")
                         a["sentiment_rationale"] = match.get("rationale", "")
+                        a["is_relevant"] = match.get("is_relevant", True)
     except Exception as e:
         logger.warning(f"AI connector batch sentiment call failed, falling back to rule scoring: {e}")
 
@@ -520,10 +502,17 @@ async def score_articles_with_ai(articles: list[dict]) -> list[dict]:
     high_pos_kw = ["auszeichnung", "preis", "rekord", "durchbruch", "leben retten", "retten", "antibiotika", "forschungserfolg", "gewinnt", "nachhaltigkeitspreis"]
     mod_pos_kw = ["forschungsprojekt", "beschleunigt", "entwicklung", "innovation", "ortungssystem", "wachstum", "investition", "eröffnung", "erfolg", "erweitert", "förderung"]
 
+    political_fps = ["türkei", "ankara", "pkk", "wolfsgruss", "partei", "erdogan", "sahel-verein", "nationalistische", "bündnis 90", "landtagswahl", "bundestagswahl"]
+
     for a in articles:
+        text = f"{a.get('title', '')} {a.get('content', '')}".lower()
+        c_lower = company_name.lower().strip()
+        if any(m in c_lower for m in ["mhp", "bvl", "swr"]):
+            if any(kw in text for kw in political_fps):
+                a["is_relevant"] = False
+
         if "sentiment_score" in a:
             continue
-        text = f"{a.get('title', '')} {a.get('content', '')}".lower()
         if any(k in text for k in high_neg_kw):
             a["sentiment_score"] = 15
             a["sentiment_label"] = "Negative"
@@ -555,9 +544,16 @@ async def run_stage2_market_and_news(company_name: str, db: AsyncSession | None 
             if company_name not in candidates:
                 candidates.insert(0, company_name)
 
+            search_queries = list(candidates)
+            # Add context-specific search queries for short acronyms like MHP
+            if len(company_name.strip()) <= 5:
+                search_queries.insert(0, f"{company_name} Porsche")
+                search_queries.insert(1, f"{company_name} Beratung")
+                search_queries.insert(2, f"{company_name} GmbH")
+
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
             async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
-                for cand in candidates:
+                for cand in search_queries:
                     res = await client.get(
                         "https://www.tagesschau.de/api2u/search/",
                         params={"searchText": cand, "resultPage": 0, "pageSize": 30},
@@ -583,7 +579,9 @@ async def run_stage2_market_and_news(company_name: str, db: AsyncSession | None 
         except Exception as direct_e:
             logger.warning(f"Direct Tagesschau API call failed for {company_name}: {direct_e}")
 
-    await score_articles_with_ai(scraped_articles)
+    await score_articles_with_ai(scraped_articles, company_name, db=db)
+    # Filter out irrelevant non-company news articles (e.g. political party MHP in Turkey)
+    scraped_articles = [a for a in scraped_articles if a.get("is_relevant", True) is not False]
     timeline = build_24_month_timeline(scraped_articles)
 
     scandal_keywords = ["insolvenz", "ermittlungen", "skandal", "streik", "verluste", "klage", "strafverfahren", "korruption"]
@@ -622,7 +620,7 @@ async def run_stage2_market_and_news(company_name: str, db: AsyncSession | None 
             "articles_found": len(scraped_articles),
             "reputation_sentiment": sentiment,
             "scandal_press_flags": scandal_flags,
-            "recent_headlines": recent_headlines if recent_headlines else [f"Keine Pressemeldungen für {company_name} im 2-Jahre Fenster verzeichnet"],
+            "recent_headlines": recent_headlines if recent_headlines else [],
             "articles": scraped_articles,
             "monthly_timeline": timeline
         }
