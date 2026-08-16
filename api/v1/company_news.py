@@ -296,9 +296,8 @@ async def scrape_company_news(company_id: str, db: AsyncSession = Depends(get_db
 
     # Step 2: Fallback to Tagesschau scraper if zero items from Deep Research
     if not scraped_articles:
-        candidates = [company_id]
-        if len(company_id) <= 5:
-            candidates.extend([f"{company_id} Management", f"{company_id} Beratung", f"{company_id} GmbH", f"{company_id} IT"])
+        from core.utils import clean_company_name_candidates
+        candidates = clean_company_name_candidates(company_id)
 
         for cand in candidates:
             try:
