@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -15,7 +16,6 @@ from models.bid import (
     CompanyNewsEntry,
     CompanyNorthData,
 )
-import re
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -428,11 +428,40 @@ def calculate_scarf_monthly_timeline(moods: list[Any]) -> list[dict]:
         s_relatedness = getattr(item, "scarf_relatedness", None) if not isinstance(item, dict) else item.get("scarf_relatedness")
         s_fairness = getattr(item, "scarf_fairness", None) if not isinstance(item, dict) else item.get("scarf_fairness")
 
-        # Fallback if SCARF score not explicitly set
-        if s_status is None:
+        # Fallback if SCARF score not explicitly set: derive from sub-scores and keywords
+        if s_status is None or s_certainty is None:
             r = getattr(item, "rating", None) if not isinstance(item, dict) else item.get("rating")
-            base = float((r - 1.0) / 4.0 * 80.0 + 10.0) if (r is not None and 1.0 <= r <= 5.0) else 50.0
-            s_status = s_certainty = s_autonomy = s_relatedness = s_fairness = base
+            overall_b = float((r - 1.0) / 4.0 * 80.0 + 10.0) if (r is not None and 1.0 <= r <= 5.0) else 50.0
+
+            def scale_sub(val: Any, default: float) -> float:
+                if val is not None and isinstance(val, (int, float)) and 1.0 <= val <= 5.0:
+                    return float((val - 1.0) / 4.0 * 80.0 + 10.0)
+                return default
+
+            culture_b = scale_sub(getattr(item, "score_culture", None) if not isinstance(item, dict) else item.get("score_culture"), overall_b)
+            career_b = scale_sub(getattr(item, "score_career", None) if not isinstance(item, dict) else item.get("score_career"), overall_b)
+            env_b = scale_sub(getattr(item, "score_environment", None) if not isinstance(item, dict) else item.get("score_environment"), overall_b)
+            div_b = scale_sub(getattr(item, "score_diversity", None) if not isinstance(item, dict) else item.get("score_diversity"), overall_b)
+
+            title_str = getattr(item, "title", None) or (item.get("title") if isinstance(item, dict) else "") or ""
+            content_str = getattr(item, "content", None) or (item.get("content") if isinstance(item, dict) else "") or ""
+            text = f"{title_str} {content_str}".lower()
+
+            def calc_dim(base: float, rewards: list[str], threats: list[str]) -> float:
+                score = base
+                for w in rewards:
+                    if w in text:
+                        score += 15.0
+                for w in threats:
+                    if w in text:
+                        score -= 15.0
+                return max(10.0, min(90.0, round(score, 1)))
+
+            s_status = calc_dim(career_b, ["lob", "anerkennung", "wertschätzung", "aufstieg", "respekt", "gefördert", "karriere"], ["kein lob", "abwertung", "mikromanagement", "druck", "überheblich"])
+            s_certainty = calc_dim(env_b, ["klarheit", "transparenz", "sicher", "vorhersehbar", "strukturiert"], ["unsicherheit", "chaos", "keine infos", "unruhe", "umstrukturierung", "richtungslos", "ungewiss"])
+            s_autonomy = calc_dim((career_b + env_b) / 2.0, ["freiraum", "vertrauen", "homeoffice", "selbstbestimmt", "flexibel", "entscheidungsspielraum"], ["mikromanagement", "kontrolle", "überwachung", "bürokratie", "keine freiheit", "abgesegnet"])
+            s_relatedness = calc_dim(culture_b, ["zusammenhalt", "kollegen", "team", "freundlich", "wir-gefühl", "hilfsbereit"], ["silos", "gegeneinander", "ellbogen", "mobbing", "ausgrenzung", "spaltung"])
+            s_fairness = calc_dim(div_b, ["fair", "gerecht", "gleichbehandlung", "angemessen", "ehrlich"], ["unfair", "ungleichbehandlung", "vetterliwirtschaft", "lieblinge", "ausbeutung"])
 
         buckets[ym]["status"].append(s_status)
         buckets[ym]["certainty"].append(s_certainty)

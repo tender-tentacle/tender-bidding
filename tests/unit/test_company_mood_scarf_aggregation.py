@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
-import pytest
-from models.bid import CompanyMood
+
 from api.v1.company_summary import calculate_scarf_monthly_timeline
+from models.bid import CompanyMood
 
 
 def test_calculate_scarf_monthly_timeline():
@@ -68,3 +68,36 @@ def test_calculate_scarf_monthly_timeline():
     assert jul_item is not None
     assert jul_item["comment_count"] == 1
     assert jul_item["avg_score"] == 60.0
+
+
+def test_calculate_scarf_monthly_timeline_unenriched_fallback():
+    """Verify that unenriched raw comments with sub-scores & text keywords produce distinct SCARF dimensions."""
+    moods = [
+        CompanyMood(
+            company_id="test_comp",
+            comment_hash="h_raw1",
+            published_date="2026-08-05",
+            title="Super Team & Flexible Arbeitszeiten, aber Unsicherheit",
+            content="Toller Kollegenzusammenhalt, Homeoffice und flexible Arbeitszeiten. Unsicherheit bei Leitung.",
+            rating=3.8,
+            score_culture=4.5,
+            score_career=3.0,
+            score_environment=4.0,
+            score_diversity=3.5,
+            scarf_status=None,
+            scarf_certainty=None,
+            scarf_autonomy=None,
+            scarf_relatedness=None,
+            scarf_fairness=None
+        )
+    ]
+
+    timeline = calculate_scarf_monthly_timeline(moods)
+    aug_item = next((item for item in timeline if item["year_month"] == "2026-08"), None)
+
+    assert aug_item is not None
+    assert aug_item["comment_count"] == 1
+    # Dimensions should NOT all be identical 50.0!
+    assert aug_item["relatedness"] > aug_item["certainty"]
+    assert aug_item["autonomy"] != aug_item["fairness"]
+

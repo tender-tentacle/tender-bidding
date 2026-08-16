@@ -66,6 +66,15 @@ class CompanyMoodSchema(BaseModel):
     salary_benefits_score: float | None = None
     salary_benefits_review_count: int | None = None
     source_platform: str | None = "kununu"
+    scarf_status: float | None = None
+    scarf_certainty: float | None = None
+    scarf_autonomy: float | None = None
+    scarf_relatedness: float | None = None
+    scarf_fairness: float | None = None
+    scarf_primary_threat: str | None = None
+    scarf_primary_reward: str | None = None
+    scarf_rationale: str | None = None
+    scarf_enriched_at: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -175,23 +184,45 @@ def clean_kununu_url(url: str | None) -> str | None:
         return None
 
 
+def clean_glassdoor_url(url: str | None) -> str | None:
+    """Sanitizes raw or URL-encoded Glassdoor links into valid company profile URLs."""
+    if not url or not isinstance(url, str):
+        return None
+    u_str = url.strip()
+    if "glassdoor.com" not in u_str.lower() and "glassdoor.de" not in u_str.lower():
+        return None
+
+    try:
+        decoded = urllib.parse.unquote(u_str)
+        match = re.search(r"(glassdoor\.(?:com|de)/[^\s\?\#]+)", decoded, flags=re.IGNORECASE)
+        if not match:
+            return None
+        return f"https://www.{match.group(1)}"
+    except Exception:
+        return None
+
+
+
 @router.post("/company/{company_id}/mood/scrape", response_model=list[CompanyMoodSchema])
 async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest, db: AsyncSession = Depends(get_db)):
     """
-    Manually scrape Kununu using a specific, validated URL.
-    Requires an explicit kununu.com URL. Never scrapes without a URL.
+    Manually scrape Kununu or Glassdoor using a specific, validated URL.
+    Requires an explicit kununu.com or glassdoor.com/de URL. Never scrapes without a URL.
     """
     from urllib.parse import unquote
     company_id = unquote(company_id)
-    cleaned_url = clean_kununu_url(request.url)
+
+    is_glassdoor = "glassdoor" in request.url.lower()
+    cleaned_url = clean_glassdoor_url(request.url) if is_glassdoor else clean_kununu_url(request.url)
     if not cleaned_url:
         raise HTTPException(
             status_code=400,
-            detail="A valid Kununu URL (e.g. https://www.kununu.com/de/company-name) is required to trigger Kununu scanner."
+            detail="A valid Kununu or Glassdoor URL is required to trigger employee rating scanner."
         )
     target_url = cleaned_url.strip()
+    platform_name = "glassdoor" if is_glassdoor else "kununu"
 
-    logger.info(f"Manual Kununu scrape requested for {company_id} with URL {target_url}")
+    logger.info(f"Manual {platform_name} scrape requested for {company_id} with URL {target_url}")
 
     clean_id = company_id.split(",")[0].split("(")[0].strip().lower()
     short_id = re.sub(r"\b(GmbH|AG|SE|Co\.|KG|Ltd\.|Inc\.|Corp\.)\b", "", clean_id, flags=re.IGNORECASE).strip()
@@ -202,7 +233,7 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
         | (func.lower(CompanyMood.company_id).contains(short_id) if len(short_id) >= 3 else False)
     )
     result = await db.execute(stmt)
-    records = result.scalars().all()
+    records = [r for r in result.scalars().all() if (r.source_platform or "kununu") == platform_name]
     if records and not request.force:
         latest_crawl = max((r.crawled_date for r in records if r.crawled_date), default=None)
         if latest_crawl:
@@ -211,7 +242,7 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
             age_days = (datetime.now(UTC) - latest_crawl).days
             if age_days < 30:
                 logger.info(
-                    f"Skipping Kununu scrape for '{company_id}': cached data was scraped {age_days}d ago (< 30 days). Saving crawler resources."
+                    f"Skipping {platform_name} scrape for '{company_id}': cached data was scraped {age_days}d ago (< 30 days). Saving crawler resources."
                 )
                 return records
 
@@ -222,9 +253,9 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
                 f"{DISTRIBUTION_MS_URL}/api/v1/taxonomy/target_companies/by_name/{company_id}/links",
                 json={"url": target_url},
             )
-            logger.info("Successfully saved Kununu URL to distributing MS.")
+            logger.info(f"Successfully saved {platform_name} URL to distributing MS.")
         except Exception as e:
-            logger.error(f"Could not save Kununu URL to distributing MS: {e}")
+            logger.error(f"Could not save {platform_name} URL to distributing MS: {e}")
 
         payload = {}
         scraped_comments = []
@@ -233,8 +264,9 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
         is_successful_crawl = False
 
         try:
+            scrape_path = "glassdoor" if is_glassdoor else "kununu"
             crawling_response = await client.post(
-                f"{CRAWLING_MS_URL}/api/v1/scrape/kununu", json={"query": company_id, "url": target_url}
+                f"{CRAWLING_MS_URL}/api/v1/scrape/{scrape_path}", json={"query": company_id, "url": target_url}
             )
             if crawling_response.status_code in (402, 429):
                 err_detail = "Firecrawl API credit limit or quota reached."
@@ -287,6 +319,7 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
                 existing.salary_satisfaction_review_count = metadata.get("salary_satisfaction_review_count")
                 existing.salary_benefits_score = metadata.get("salary_benefits_score")
                 existing.salary_benefits_review_count = metadata.get("salary_benefits_review_count")
+                existing.source_platform = platform_name
                 existing.crawled_date = datetime.now(UTC)
             continue
 
@@ -311,8 +344,10 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
             salary_satisfaction_review_count=metadata.get("salary_satisfaction_review_count"),
             salary_benefits_score=metadata.get("salary_benefits_score"),
             salary_benefits_review_count=metadata.get("salary_benefits_review_count"),
+            source_platform=platform_name,
             crawled_date=datetime.now(UTC),
         )
+
         db.add(mood)
         new_moods.append(mood)
 
@@ -657,4 +692,112 @@ async def delete_company_mood(company_id: str, db: AsyncSession = Depends(get_db
         "deleted_moods": res_mood.rowcount,
         "deleted_salaries": res_salary.rowcount,
         "deleted_jobs": res_job.rowcount,
+    }
+
+
+@router.post("/company/{company_id}/mood/enrich-scarf", response_model=dict)
+async def enrich_company_mood_scarf(
+    company_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Triggers AI SCARF model enrichment for all un-analyzed Kununu comments of a company.
+    Calculates 5 SCARF dimension scores (0-100) per comment and persists them in DB.
+    """
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
+    clean_id = company_id.split(",")[0].split("(")[0].strip().lower()
+    short_id = re.sub(r"\b(GmbH|AG|SE|Co\.|KG|Ltd\.|Inc\.|Corp\.)\b", "", clean_id, flags=re.IGNORECASE).strip()
+
+    stmt = select(CompanyMood).where(
+        (func.lower(CompanyMood.company_id) == company_id.lower())
+        | (func.lower(CompanyMood.company_id).contains(clean_id))
+        | (func.lower(CompanyMood.company_id).contains(short_id) if len(short_id) >= 3 else False)
+    )
+    res = await db.execute(stmt)
+    moods = res.scalars().all()
+
+    if not moods:
+        return {
+            "status": "no_comments",
+            "company_id": company_id,
+            "total_comments": 0,
+            "analyzed_count": 0,
+            "waiting_count": 0,
+            "moods": []
+        }
+
+    # Call AI MS /api/v1/enrich/scarf or local extractor fallback
+    comment_inputs = []
+    for m in moods:
+        c_id = m.comment_hash or str(m.id)
+        comment_inputs.append({
+            "id": c_id,
+            "title": m.title or "",
+            "content": m.content or m.summary_text or "",
+            "rating": m.overall_score or m.rating or 3.0
+        })
+
+    enriched_map = {}
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            ai_res = await client.post(
+                f"{AI_MS_URL}/api/v1/enrich/scarf",
+                json={"comments": comment_inputs}
+            )
+            if ai_res.status_code == 200:
+                data = ai_res.json()
+                for item in data.get("enriched_comments", []):
+                    enriched_map[item["id"]] = item
+        except Exception as err:
+            logger.warning(f"AI MS SCARF enrichment failed, falling back to local extractor: {err}")
+
+    # Fallback to local extract_scarf_dimensions if AI MS call wasn't available
+    from artificial_intelligence_connector.core.scarf_extractor import extract_scarf_dimensions  # type: ignore
+
+    updated_count = 0
+    now_utc = datetime.now(UTC)
+
+    for m in moods:
+        c_id = m.comment_hash or str(m.id)
+        res_data = enriched_map.get(c_id)
+
+        if res_data and "scarf_scores" in res_data:
+            s_scores = res_data["scarf_scores"]
+            m.scarf_status = float(s_scores.get("status", 50.0))
+            m.scarf_certainty = float(s_scores.get("certainty", 50.0))
+            m.scarf_autonomy = float(s_scores.get("autonomy", 50.0))
+            m.scarf_relatedness = float(s_scores.get("relatedness", 50.0))
+            m.scarf_fairness = float(s_scores.get("fairness", 50.0))
+            m.scarf_primary_threat = res_data.get("primary_threat")
+            m.scarf_primary_reward = res_data.get("primary_reward")
+            m.scarf_rationale = res_data.get("rationale")
+            m.scarf_enriched_at = now_utc
+            updated_count += 1
+        else:
+            local_res = extract_scarf_dimensions(
+                title=m.title,
+                content=m.content or m.summary_text,
+                rating=m.overall_score or m.rating or 3.0
+            )
+            m.scarf_status = float(local_res["status"])
+            m.scarf_certainty = float(local_res["certainty"])
+            m.scarf_autonomy = float(local_res["autonomy"])
+            m.scarf_relatedness = float(local_res["relatedness"])
+            m.scarf_fairness = float(local_res["fairness"])
+            m.scarf_primary_threat = local_res.get("primary_threat")
+            m.scarf_primary_reward = local_res.get("primary_reward")
+            m.scarf_rationale = local_res.get("rationale")
+            m.scarf_enriched_at = now_utc
+            updated_count += 1
+
+    await db.commit()
+
+    return {
+        "status": "success",
+        "company_id": company_id,
+        "total_comments": len(moods),
+        "analyzed_count": len(moods),
+        "waiting_count": 0,
+        "updated_count": updated_count
     }

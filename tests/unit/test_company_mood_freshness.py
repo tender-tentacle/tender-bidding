@@ -91,10 +91,11 @@ async def test_manual_scrape_requires_valid_kununu_url():
     with pytest.raises(HTTPException) as exc_info:
         await manual_scrape_company_mood("Toll Collect GmbH", ScrapeMoodRequest(url=""), db=mock_db)
     assert exc_info.value.status_code == 400
-    assert "valid Kununu URL" in exc_info.value.detail
+    assert "valid Kununu or Glassdoor URL" in exc_info.value.detail
 
-    # 2. Non-kununu URL
+    # 2. Non-kununu and non-glassdoor URL
     with pytest.raises(HTTPException) as exc_info2:
         await manual_scrape_company_mood("Toll Collect GmbH", ScrapeMoodRequest(url="https://google.com"), db=mock_db)
     assert exc_info2.value.status_code == 400
-    assert "valid Kununu URL" in exc_info2.value.detail
+    assert "valid Kununu or Glassdoor URL" in exc_info2.value.detail
+

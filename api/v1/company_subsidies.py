@@ -18,7 +18,8 @@ try:
         scrape_company_subsidies_on_the_fly,
     )
 except ImportError:
-    import hashlib, urllib.parse
+    import hashlib
+    import urllib.parse
     def scrape_company_subsidies_on_the_fly(company_name: str) -> list[dict[str, Any]]:
         if not company_name or not company_name.strip():
             return []

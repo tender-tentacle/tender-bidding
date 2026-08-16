@@ -10,16 +10,18 @@ from tests.helpers import api_client
 async def test_get_company_mood_calls_crawling_ms_and_caches():
     # Setup test data
     company_id = "test-company"
-    mock_kununu_data = [
-        {
-            "comment_hash": "hash123",
-            "title": "Great place",
-            "content": "I love working here",
-            "rating": 5.0,
-            "published_date": "2023-01-01",
-            "crawled_date": "2023-10-01T00:00:00Z",
-        }
-    ]
+    mock_kununu_data = {
+        "comments": [
+            {
+                "comment_hash": "hash123",
+                "title": "Great place",
+                "content": "I love working here",
+                "rating": 5.0,
+                "published_date": "2023-01-01",
+                "crawled_date": "2023-10-01T00:00:00Z",
+            }
+        ]
+    }
 
     class MockResponse:
         def __init__(self, json_data, status_code=200):
@@ -33,11 +35,19 @@ async def test_get_company_mood_calls_crawling_ms_and_caches():
             if self.status_code >= 400:
                 raise httpx.HTTPStatusError("Error", request=None, response=self)
 
-    async def mock_post(*args, **kwargs):
-        return MockResponse(mock_kununu_data)
+    original_post = httpx.AsyncClient.post
 
-    with patch("httpx.AsyncClient.post", new=AsyncMock(side_effect=mock_post)):
+    async def mock_post(self, url, *args, **kwargs):
+        url_str = str(url)
+        if "scrape/kununu" in url_str:
+            return MockResponse(mock_kununu_data)
+        if "taxonomy" in url_str:
+            return MockResponse({})
+        return await original_post(self, url, *args, **kwargs)
+
+    with patch.object(httpx.AsyncClient, "post", new=mock_post):
         async with api_client() as ac:
+            await ac.post(f"/company/{company_id}/mood/scrape", json={"url": "https://www.kununu.com/de/test-company"})
             response = await ac.get(f"/company/{company_id}/mood")
 
             assert response.status_code == 200
@@ -187,6 +197,74 @@ async def test_manual_scrape_kununu_forces_rescrape_when_force_true():
             )
             assert resp2.status_code == 200
             assert post_call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_enrich_company_mood_scarf_endpoint():
+    company_id = "test-scarf-enrich-comp"
+    async with api_client() as ac:
+        resp = await ac.post(f"/company/{company_id}/mood/enrich-scarf")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "status" in data
+        assert "analyzed_count" in data
+
+
+@pytest.mark.asyncio
+async def test_manual_scrape_glassdoor_mood_endpoint():
+    company_id = "MHP - A Porsche Company"
+    mock_glassdoor_data = {
+        "metadata": {
+            "overall_score": 3.4,
+            "review_count": 656,
+            "ceo_approval_rating": 88,
+            "recommend_to_friend_rating": 57
+        },
+        "comments": [
+            {
+                "comment_hash": "mhp_gd_1",
+                "title": "Gute Entwicklungsmöglichkeiten",
+                "content": "Flache Hierarchien und agile Kultur",
+                "rating": 4.0,
+                "published_date": "2026-02-10",
+            }
+        ],
+    }
+
+    class MockResponse:
+        def __init__(self, json_data, status_code=200):
+            self.json_data = json_data
+            self.status_code = status_code
+
+        def json(self):
+            return self.json_data
+
+        def raise_for_status(self):
+            pass
+
+    original_post = httpx.AsyncClient.post
+
+    async def mock_post(self, url, *args, **kwargs):
+        url_str = str(url)
+        if "scrape/glassdoor" in url_str:
+            return MockResponse(mock_glassdoor_data)
+        if "taxonomy" in url_str:
+            return MockResponse({})
+        return await original_post(self, url, *args, **kwargs)
+
+    with patch.object(httpx.AsyncClient, "post", new=mock_post):
+        async with api_client() as ac:
+            resp = await ac.post(
+                f"/company/{company_id}/mood/scrape",
+                json={"url": "https://www.glassdoor.de/Bewertungen/MHP-A-Porsche-Company-Bewertungen-E858954.htm"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert len(data) >= 1
+            assert data[0]["source_platform"] == "glassdoor"
+            assert data[0]["overall_score"] == 3.4
+
+
 
 
 
