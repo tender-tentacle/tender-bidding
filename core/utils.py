@@ -13,10 +13,12 @@ def clean_company_name_candidates(name: str) -> list[str]:
     e.g. "MHP Management- und IT-Beratung GmbH" ->
     1. "MHP Management- und IT-Beratung GmbH"
     2. "MHP Management- und IT-Beratung"
-    3. "MHP Management- IT-Beratung GmbH"
-    4. "Management- und IT-Beratung GmbH"
+    3. "MHP Management- IT-Beratung"
+    4. "MHP Management und IT Beratung"
     5. "MHP Management"
     6. "MHP"
+    7. "Management- und IT-Beratung GmbH"
+    8. "Management- und IT-Beratung"
     """
     if not name or not name.strip():
         return []
@@ -24,20 +26,6 @@ def clean_company_name_candidates(name: str) -> list[str]:
     raw = name.strip()
     candidates: list[str] = []
 
-    def _add(cand: str):
-        c = re.sub(r"\s+", " ", cand).strip()
-        c = re.sub(r"[\s,\.-]+$", "", c).strip()
-        if c and len(c) >= 2 and c not in candidates:
-            candidates.append(c)
-
-    # 1. Full original name
-    _add(raw)
-
-    # 2. Truncate 'vertreten durch' clauses
-    base = re.split(r",?\s+vertreten\s+durch\b", raw, flags=re.IGNORECASE)[0].strip()
-    _add(base)
-
-    # 3. Strip legal form extensions
     legal_forms = [
         r"Gesellschaft\s+mit\s+beschränkter\s+Haftung",
         r"Anstalt\s+des\s+öffentlichen\s+Rechts",
@@ -61,40 +49,57 @@ def clean_company_name_candidates(name: str) -> list[str]:
         r"Corp\.?",
         r"Co\.?",
     ]
-    pattern = r"\b(" + "|".join(legal_forms) + r")\b"
-    no_legal = re.sub(pattern, "", base, flags=re.IGNORECASE).strip()
+    pattern_legal = r"\b(" + "|".join(legal_forms) + r")\b"
+    pattern_exact_legal = r"^(" + "|".join(legal_forms) + r")$"
+
+    def _add(cand: str):
+        c = re.sub(r"\s+", " ", cand).strip()
+        c = re.sub(r"[\s,\.-]+$", "", c).strip()
+        c = re.sub(r"^\s*[\(\[\{]\s*", "", c).strip()
+        c = re.sub(r"\s*[\)\]\}]\s*$", "", c).strip()
+        if c and len(c) >= 2 and c not in candidates:
+            if not re.match(pattern_exact_legal, c, flags=re.IGNORECASE):
+                candidates.append(c)
+
+    # 1. Full raw name
+    _add(raw)
+
+    # 2. Truncate 'vertreten durch' clauses
+    base = re.split(r",?\s+vertreten\s+durch\b", raw, flags=re.IGNORECASE)[0].strip()
+    _add(base)
+
+    # 3. Strip legal form extensions
+    no_legal = re.sub(pattern_legal, "", base, flags=re.IGNORECASE).strip()
     _add(no_legal)
 
-    # 4. Remove filler words (e.g. "und", "&")
-    no_fillers = re.sub(r"\b(und|&|des|der|die|das|für|zur)\b", "", raw, flags=re.IGNORECASE).strip()
+    # 4. Remove filler words / prepositions
+    no_fillers = re.sub(
+        r"\b(und|&|des|der|die|das|für|zur|von|mit|in|on|at|of|for)\b",
+        "",
+        no_legal,
+        flags=re.IGNORECASE,
+    ).strip()
     _add(no_fillers)
-    no_fillers_no_legal = re.sub(pattern, "", no_fillers, flags=re.IGNORECASE).strip()
-    _add(no_fillers_no_legal)
 
-    # 5. Left-to-right word reductions (drop first word/brand)
-    words = [w for w in re.split(r"\s+", no_legal) if w]
-    if len(words) > 1:
-        words_no_first = [w for w in re.split(r"\s+", raw) if w][1:]
-        if words_no_first:
-            _add(" ".join(words_no_first))
-        words_no_first_no_legal = [w for w in re.split(r"\s+", no_legal) if w][1:]
-        if words_no_first_no_legal:
-            _add(" ".join(words_no_first_no_legal))
+    # 5. Extract word tokens from no_legal
+    words = [w.strip(".,()[]{}") for w in re.split(r"\s+", no_legal) if w.strip(".,()[]{}")]
 
     # 6. Progressive right-to-left word reductions
-    for i in range(len(words) - 1, 0, -1):
-        cand_sub = " ".join(words[:i])
-        cand_sub = re.sub(r"[\s,\.-]+$", "", cand_sub).strip()
-        if cand_sub and not cand_sub.lower().endswith(" und"):
-            _add(cand_sub)
+    for i in range(len(words), 0, -1):
+        phrase = " ".join(words[:i])
+        phrase_clean = re.sub(r"-(?:und|&)?$", "", phrase, flags=re.IGNORECASE).strip()
+        phrase_clean = re.sub(r"\b(und|&)\b$", "", phrase_clean, flags=re.IGNORECASE).strip()
+        _add(phrase_clean)
+        phrase_space = phrase_clean.replace("-", " ")
+        _add(phrase_space)
 
-    # 7. First word alone if acronym / brand (e.g. "MHP")
-    if words:
-        first_w = words[0].strip("-,. ")
-        _add(first_w)
-        if len(first_w) <= 5:
-            _add(f"{first_w} Porsche")
-            _add(f"{first_w} Beratung")
-            _add(f"{first_w} IT")
+    # 7. Progressive left-to-right word reductions (dropping leading generic words)
+    raw_words = [w.strip(".,()[]{}") for w in re.split(r"\s+", raw) if w.strip(".,()[]{}")]
+    if len(raw_words) > 1:
+        for i in range(1, len(raw_words)):
+            phrase = " ".join(raw_words[i:])
+            phrase_no_legal = re.sub(pattern_legal, "", phrase, flags=re.IGNORECASE).strip()
+            _add(phrase)
+            _add(phrase_no_legal)
 
     return candidates
