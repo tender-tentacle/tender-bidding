@@ -21,6 +21,7 @@ class CompanyProfile(Base):
 
     company_id = Column(String(255), primary_key=True)
     description = Column(String(4000), nullable=True)
+    full_text = Column(Text, nullable=True)
     logo_url = Column(String(1000), nullable=True)
     wikipedia_url = Column(String(1000), nullable=True)
     crawled_date = Column(DateTime(timezone=True), nullable=False)
@@ -61,6 +62,7 @@ class CompanyProfile(Base):
 class CompanyProfileSchema(BaseModel):
     company_id: str
     description: str | None
+    full_text: str | None = None
     logo_url: str | None
     wikipedia_url: str | None = None
     crawled_date: datetime
@@ -171,6 +173,7 @@ async def get_company_profile(company_id: str, db: AsyncSession = Depends(get_db
 
         if profile:
             profile.description = wiki_data.get("description") or profile.description
+            profile.full_text = wiki_data.get("full_text") or wiki_data.get("description") or profile.full_text
             profile.logo_url = wiki_data.get("logo_url") or profile.logo_url
             profile.wikipedia_url = wiki_data.get("wikipedia_url") or profile.wikipedia_url
             profile.servicebund_url = sb_data.get("url") or profile.servicebund_url
@@ -186,6 +189,7 @@ async def get_company_profile(company_id: str, db: AsyncSession = Depends(get_db
             profile = CompanyProfile(
                 company_id=company_id,
                 description=wiki_data.get("description"),
+                full_text=wiki_data.get("full_text") or wiki_data.get("description"),
                 logo_url=wiki_data.get("logo_url"),
                 wikipedia_url=wiki_data.get("wikipedia_url"),
                 servicebund_url=sb_data.get("url"),
