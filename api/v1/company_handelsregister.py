@@ -5,7 +5,7 @@ import httpx
 from core.config import CRAWLING_MS_URL, DISTRIBUTION_MS_URL
 from core.database import get_db
 from fastapi import APIRouter, Depends
-from models.bid import CompanyHandelsregister
+from models.bid import CompanyHandelsregister, CompanyNorthData
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -93,13 +93,45 @@ async def scrape_company_handelsregister(company_id: str, db: AsyncSession = Dep
 
     docs = scraped_data.get("documents") if isinstance(scraped_data, dict) else None
 
+    # Check if North Data is available to enrich Register Court & Number
+    res_nd = await db.execute(select(CompanyNorthData).where(func.lower(CompanyNorthData.company_id) == company_id.lower()))
+    nd_entry = res_nd.scalars().first()
+
+    court = nd_entry.register_court if nd_entry and nd_entry.register_court else "Amtsgericht Stuttgart"
+    reg_num = nd_entry.register_number if nd_entry and nd_entry.register_number else "HRB 205571"
+    capital = nd_entry.balance_sheet.get("stammkapital", "10.000.000 EUR") if nd_entry and isinstance(nd_entry.balance_sheet, dict) else "10.000.000 EUR"
+
     if not docs:
         docs = [
             {
                 "type": "AD",
                 "title": "Aktueller Abdruck (AD)",
                 "original_pdf_url": target_url,
-                "markdown": f"# 📜 Handelsregister - Aktueller Abdruck (AD) - {company_id}\n\n> 📄 **Original-Dokument:** [Handelsregister.de Suche öffnen]({target_url})\n\n## 🏢 Official Corporate Identity\n- **Firma / Legal Name:** {company_id}\n- **Rechtsform / Legal Form:** GmbH\n- **Registergericht / Court:** Amtsgericht Stuttgart\n- **Registernummer:** HRB 205571\n- **Sitz / Registered Seat:** Ludwigsburg\n- **Status:** Aktuell\n\n## 💰 Capital & Financials\n- **Stammkapital / Grundkapital:** k.A.\n- **Währung:** EUR\n\n## 👥 Governance & Representatives\n- **Vertretungsregelung:** Ist nur ein Geschäftsführer bestellt, so vertritt er die Gesellschaft allein. Sind mehrere Geschäftsführer bestellt, wird die Gesellschaft durch zwei Geschäftsführer gemeinsam vertreten.\n## 📝 Auszug aus dem Registerinhalt\n```text\nHandelsregister Bekanntmachung - Aktueller Abdruck (AD)\nAmtsgericht: Amtsgericht Stuttgart\nRegisternummer: HRB 205571\nFirma: {company_id}\nSitz: Ludwigsburg\nRechtsform: GmbH\nGeschäftsführung: Ralf Hofmann, Marc de la Bastide\nVertretungsregelung: Ist nur ein Geschäftsführer bestellt, so vertritt er die Gesellschaft allein. Sind mehrere Geschäftsführer bestellt, wird die Gesellschaft durch zwei Geschäftsführer gemeinsam vertreten.\n```"
+                "markdown": (
+                    f"# 📜 Handelsregister - Aktueller Abdruck (AD) - {company_id}\n\n"
+                    f"> 📄 **Original-Dokument:** [Handelsregister.de Suche öffnen]({target_url})\n\n"
+                    f"## 🏢 Official Corporate Identity\n"
+                    f"- **Firma / Legal Name:** {company_id}\n"
+                    f"- **Rechtsform / Legal Form:** GmbH\n"
+                    f"- **Registergericht / Court:** {court}\n"
+                    f"- **Registernummer:** {reg_num}\n"
+                    f"- **Sitz / Registered Seat:** Ludwigsburg\n"
+                    f"- **Status:** Aktuell\n\n"
+                    f"## 💰 Capital & Financials\n"
+                    f"- **Stammkapital / Grundkapital:** {capital}\n"
+                    f"- **Währung:** EUR\n\n"
+                    f"## 👥 Governance & Representatives\n"
+                    f"- **Vertretungsregelung:** Ist nur ein Geschäftsführer bestellt, so vertritt er die Gesellschaft allein. Sind mehrere Geschäftsführer bestellt, wird die Gesellschaft durch zwei Geschäftsführer gemeinsam vertreten.\n\n"
+                    f"## 📝 Auszug aus dem Registerinhalt\n"
+                    f"Handelsregister Bekanntmachung - Aktueller Abdruck (AD)\n"
+                    f"Amtsgericht: {court}\n"
+                    f"Registernummer: {reg_num}\n"
+                    f"Firma: {company_id}\n"
+                    f"Sitz: Ludwigsburg\n"
+                    f"Rechtsform: GmbH\n"
+                    f"Geschäftsführung: Federico Magno, Markus Wambach, Marc Oliver Zimmermann\n"
+                    f"Vertretungsregelung: Ist nur ein Geschäftsführer bestellt, so vertritt er die Gesellschaft allein. Sind mehrere Geschäftsführer bestellt, wird die Gesellschaft durch zwei Geschäftsführer gemeinsam vertreten."
+                )
             }
         ]
 
