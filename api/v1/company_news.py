@@ -199,3 +199,60 @@ async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error updating company news DB: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/company/{company_id}/news/scrape", response_model=list[CompanyNewsEntrySchema])
+async def scrape_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
+    """
+    Force re-scrape company news from Tagesschau / newsroom crawlers, bypassing 1-hour cache.
+    """
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
+    crawling_url = os.getenv("CRAWLING_URL", "http://tender-crawling:8001")
+
+    scraped_articles = []
+    candidates = [company_id]
+    if len(company_id) <= 5:
+        candidates.extend([f"{company_id} Management", f"{company_id} Beratung", f"{company_id} GmbH", f"{company_id} IT"])
+
+    for cand in candidates:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                res = await client.post(
+                    f"{crawling_url}/api/v1/scrape/tagesschau", json={"query": cand}, timeout=25.0
+                )
+                if res.status_code == 200 and res.json():
+                    scraped_articles.extend(res.json())
+                    break
+        except Exception as e:
+            logger.error(f"Failed to connect to crawling service for Tagesschau scrape: {e}")
+
+    # Deduplicate and save
+    seen_hashes = set()
+    new_entries = []
+    for item in scraped_articles:
+        article_hash = item.get("hash") or item.get("link")
+        if not article_hash or article_hash in seen_hashes:
+            continue
+        seen_hashes.add(article_hash)
+
+        pub_date = item.get("published_at") or item.get("published_date") or datetime.now(UTC).strftime("%Y-%m-%d")
+        entry = CompanyNewsEntry(
+            company_id=company_id,
+            hash=str(article_hash),
+            title=item.get("title", ""),
+            link=item.get("link", ""),
+            content=item.get("content", ""),
+            category=item.get("category", "Tagesschau News"),
+            published_date=pub_date,
+            crawled_date=datetime.now(UTC).replace(tzinfo=None),
+        )
+        db.add(entry)
+        new_entries.append(entry)
+
+    try:
+        await db.commit()
+    except Exception as e:
+        logger.warning(f"Save scraped news commit warning: {e}")
+
+    return new_entries
