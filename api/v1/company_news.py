@@ -16,14 +16,78 @@ router = APIRouter()
 
 
 class CompanyNewsEntrySchema(BaseModel):
-    title: str | None
-    link: str | None
-    content: str | None
-    category: str | None
-    published_date: str | None
+    id: str | None = None
+    company_id: str | None = None
+    hash: str | None = None
+    title: str | None = None
+    link: str | None = None
+    content: str | None = None
+    summary: str | None = None
+    category: str | None = None
+    source_type: str | None = "press"
+    published_date: str | None = None
+    sentiment_score: int | None = None
+    sentiment_label: str | None = None
+    sentiment_rationale: str | None = None
+    key_topics: list[str] | dict | None = None
 
     class Config:
         from_attributes = True
+
+
+async def run_deep_research_company_news(company_name: str, newsroom_urls: list[str] | None = None) -> dict:
+    """Queries AI Connector using model_tier='deep-research' for dual-section press news & blog synthesis."""
+    ai_url = os.getenv("AI_URL", "http://ai:8004")
+    prompt_payload = {
+        "prompt_id": "company_deep_research_news",
+        "input_text": f"Execute deep research for news and official blog articles regarding company: '{company_name}'. Official newsroom/blog URLs: {newsroom_urls or []}.",
+        "model_tier": "deep-research",
+        "output_structure": {
+            "press_news": [
+                {
+                    "title": "Headline",
+                    "link": "https://...",
+                    "summary": "2-sentence summary of news item",
+                    "published_date": "YYYY-MM-DD",
+                    "sentiment_score": 75,
+                    "sentiment_label": "Positive",
+                    "sentiment_rationale": "Explanation",
+                    "key_topics": ["Topic"]
+                }
+            ],
+            "company_blog": [
+                {
+                    "title": "Blog Headline",
+                    "link": "https://...",
+                    "summary": "2-sentence summary of blog post",
+                    "published_date": "YYYY-MM-DD",
+                    "sentiment_score": 80,
+                    "sentiment_label": "Positive",
+                    "sentiment_rationale": "Explanation",
+                    "key_topics": ["Topic"]
+                }
+            ]
+        }
+    }
+    try:
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            res = await client.post(f"{ai_url}/api/inference", json=prompt_payload)
+            if res.status_code == 200:
+                body = res.json()
+                raw_out = body.get("data", {}).get("raw_output")
+                if isinstance(raw_out, str):
+                    import json
+                    cleaned = raw_out.strip()
+                    if cleaned.startswith("```json"):
+                        cleaned = cleaned.split("```json", 1)[1].split("```", 1)[0].strip()
+                    elif cleaned.startswith("```"):
+                        cleaned = cleaned.split("```", 1)[1].split("```", 1)[0].strip()
+                    return json.loads(cleaned)
+                if isinstance(raw_out, dict):
+                    return raw_out
+    except Exception as e:
+        logger.warning(f"Deep Research call for {company_name} failed: {e}")
+    return {}
 
 
 @router.get("/company/{company_id}/news", response_model=list[CompanyNewsEntrySchema])
@@ -204,34 +268,57 @@ async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
 @router.post("/company/{company_id}/news/scrape", response_model=list[CompanyNewsEntrySchema])
 async def scrape_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
     """
-    Force re-scrape company news from Tagesschau / newsroom crawlers, bypassing 1-hour cache.
+    Force re-scrape company news and execute Deep Research for press news & corporate blog/newsroom.
     """
     from urllib.parse import unquote
     company_id = unquote(company_id)
     crawling_url = os.getenv("CRAWLING_URL", "http://tender-crawling:8001")
 
+    # Step 1: Execute Deep Research for Press & Company Blog
+    deep_res = await run_deep_research_company_news(company_id)
+    press_items = deep_res.get("press_news") or []
+    blog_items = deep_res.get("company_blog") or []
+
     scraped_articles = []
-    candidates = [company_id]
-    if len(company_id) <= 5:
-        candidates.extend([f"{company_id} Management", f"{company_id} Beratung", f"{company_id} GmbH", f"{company_id} IT"])
+    for item in press_items:
+        item["source_type"] = "press"
+        item["category"] = "Presse & Medien (Deep Research)"
+        scraped_articles.append(item)
 
-    for cand in candidates:
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                res = await client.post(
-                    f"{crawling_url}/api/v1/scrape/tagesschau", json={"query": cand}, timeout=25.0
-                )
-                if res.status_code == 200 and res.json():
-                    scraped_articles.extend(res.json())
-                    break
-        except Exception as e:
-            logger.error(f"Failed to connect to crawling service for Tagesschau scrape: {e}")
+    for item in blog_items:
+        item["source_type"] = "company_blog"
+        item["category"] = "Corporate Blog & Newsroom (Deep Research)"
+        scraped_articles.append(item)
 
-    # Deduplicate and save
+    # Step 2: Fallback to Tagesschau scraper if zero items from Deep Research
+    if not scraped_articles:
+        candidates = [company_id]
+        if len(company_id) <= 5:
+            candidates.extend([f"{company_id} Management", f"{company_id} Beratung", f"{company_id} GmbH", f"{company_id} IT"])
+
+        for cand in candidates:
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    res = await client.post(
+                        f"{crawling_url}/api/v1/scrape/tagesschau", json={"query": cand}, timeout=25.0
+                    )
+                    if res.status_code == 200 and res.json():
+                        for it in res.json():
+                            it["source_type"] = "press"
+                            scraped_articles.append(it)
+                        break
+            except Exception as e:
+                logger.error(f"Failed to connect to crawling service for Tagesschau scrape: {e}")
+
+    # Step 3: Clear old entries for company and persist new entries
+    old_entries_res = await db.execute(select(CompanyNewsEntry).where(CompanyNewsEntry.company_id == company_id))
+    for old in old_entries_res.scalars().all():
+        await db.delete(old)
+
     seen_hashes = set()
     new_entries = []
     for item in scraped_articles:
-        article_hash = item.get("hash") or item.get("link")
+        article_hash = item.get("hash") or item.get("link") or item.get("title")
         if not article_hash or article_hash in seen_hashes:
             continue
         seen_hashes.add(article_hash)
@@ -242,16 +329,24 @@ async def scrape_company_news(company_id: str, db: AsyncSession = Depends(get_db
             hash=str(article_hash),
             title=item.get("title", ""),
             link=item.get("link", ""),
-            content=item.get("content", ""),
-            category=item.get("category", "Tagesschau News"),
+            content=item.get("content") or item.get("summary") or "",
+            summary=item.get("summary"),
+            category=item.get("category", "Unternehmens-News"),
+            source_type=item.get("source_type", "press"),
             published_date=pub_date,
             crawled_date=datetime.now(UTC).replace(tzinfo=None),
+            sentiment_score=item.get("sentiment_score"),
+            sentiment_label=item.get("sentiment_label"),
+            sentiment_rationale=item.get("sentiment_rationale"),
+            key_topics=item.get("key_topics"),
         )
         db.add(entry)
         new_entries.append(entry)
 
     try:
         await db.commit()
+        for e in new_entries:
+            await db.refresh(e)
     except Exception as e:
         logger.warning(f"Save scraped news commit warning: {e}")
 

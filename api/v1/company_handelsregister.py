@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 from core.config import CRAWLING_MS_URL, DISTRIBUTION_MS_URL
 from core.database import get_db
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from models.bid import CompanyHandelsregister
 from pydantic import BaseModel
 from sqlalchemy import func, select

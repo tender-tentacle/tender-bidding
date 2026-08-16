@@ -71,7 +71,7 @@ def test_calculate_scarf_monthly_timeline():
 
 
 def test_calculate_scarf_monthly_timeline_unenriched_fallback():
-    """Verify that unenriched raw comments with sub-scores & text keywords produce distinct SCARF dimensions."""
+    """Verify that unenriched raw comments without AI SCARF scores are omitted from AI SCARF timeline."""
     moods = [
         CompanyMood(
             company_id="test_comp",
@@ -96,8 +96,7 @@ def test_calculate_scarf_monthly_timeline_unenriched_fallback():
     aug_item = next((item for item in timeline if item["year_month"] == "2026-08"), None)
 
     assert aug_item is not None
-    assert aug_item["comment_count"] == 1
-    # Dimensions should NOT all be identical 50.0!
-    assert aug_item["relatedness"] > aug_item["certainty"]
-    assert aug_item["autonomy"] != aug_item["fairness"]
+    # Unenriched item has no AI SCARF scores, so timeline count should be 0 and avg_score 0.0 (no synthetic data)
+    assert aug_item["comment_count"] == 0
+    assert aug_item["avg_score"] == 0.0
 

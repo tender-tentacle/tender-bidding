@@ -68,9 +68,12 @@ async def get_db():
 
 async def init_db() -> None:
     """Create all tables (idempotent) and seed the static portal-guide library."""
-    import models.bid  # noqa: F401 — register mappers with Base.metadata
+    import api.v1.company_profile  # noqa: F401
+    import models  # noqa: F401 — register all mappers with Base.metadata
 
     async with engine.begin() as conn:
+
+
         await conn.run_sync(Base.metadata.create_all)
 
         # Safe migration patch: check and add new columns to bid_required_document
@@ -163,6 +166,17 @@ async def init_db() -> None:
                 if col not in existing_cols:
                     await conn.execute(text(f"ALTER TABLE bid_company_northdata ADD COLUMN {col} {col_type}"))
                     logger.info(f"SQLite migration: Added column {col} to bid_company_northdata")
+
+            cols_res = await conn.execute(text("PRAGMA table_info(bid_company_news_entry)"))
+            existing_cols = {row[1] for row in cols_res.fetchall()}
+            for col, col_type in [
+                ("source_type", "VARCHAR(50) DEFAULT 'press'"),
+                ("summary", "TEXT"),
+                ("key_topics", "JSON"),
+            ]:
+                if col not in existing_cols:
+                    await conn.execute(text(f"ALTER TABLE bid_company_news_entry ADD COLUMN {col} {col_type}"))
+                    logger.info(f"SQLite migration: Added column {col} to bid_company_news_entry")
         else:
             # Widening bid.id and foreign key columns for 36-char formatted UUIDs in Azure SQL / MSSQL
             mssql_widen_ids = """

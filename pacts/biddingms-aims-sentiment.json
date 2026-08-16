@@ -1,0 +1,55 @@
+{
+  "consumer": {
+    "name": "BiddingMS"
+  },
+  "provider": {
+    "name": "AIMS"
+  },
+  "interactions": [
+    {
+      "description": "a request to batch score news articles with company relevance and sentiment",
+      "providerState": "AI Connector is ready to evaluate news sentiment and company relevance",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sentiment/batch-score",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "company_name": "MHP",
+          "prompt_template": "Prüfen Sie zwingend, ob der folgende Zeitungsartikel TATSÄCHLICH vom gewerblichen Unternehmen '{company_name}' handelt...",
+          "articles": [
+            {
+              "id": "art-0",
+              "title": "MHP erzielt Rekordumsatz als Porsche-Tochter im IT-Sektor",
+              "content": "Die IT- und Managementberatung MHP mit Sitz in Ludwigsburg verzeichnet Plus.",
+              "published_date": "2026-07-15"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "scored_articles": [
+            {
+              "id": "art-0",
+              "sentiment_score": 88,
+              "sentiment_label": "Positive",
+              "rationale": "Unternehmensmeldung über MHP Porsche-Tochter",
+              "is_relevant": true
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "pactSpecification": {
+      "version": "2.0.0"
+    }
+  }
+}

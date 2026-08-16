@@ -286,8 +286,8 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
                 err_detail = f"{platform_name.capitalize()} crawl failed with HTTP {crawling_response.status_code}"
                 try:
                     err_detail = crawling_response.json().get("detail", err_detail)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug(f"Could not parse JSON detail from crawling response: {exc}")
                 logger.error(f"{platform_name.capitalize()} crawl error for {company_id}: {err_detail}")
                 if records:
                     logger.info(f"Returning {len(records)} cached records after crawl failure.")

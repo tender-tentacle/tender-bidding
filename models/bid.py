@@ -444,6 +444,9 @@ class CompanyNewsEntry(Base):
     sentiment_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sentiment_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
     sentiment_rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_type: Mapped[str | None] = mapped_column(String(50), default="press", nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    key_topics: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class CompanyHistoricTender(Base):
