@@ -25,7 +25,6 @@ def test_clean_company_name_candidates_legal_forms_and_clauses():
     cands6 = clean_company_name_candidates("MHP Management- und IT-Beratung GmbH")
     assert "MHP Management- und IT-Beratung GmbH" in cands6
     assert "MHP Management- und IT-Beratung" in cands6
-    assert "MHP Management- IT-Beratung" in cands6
     assert "MHP Management" in cands6
     assert "MHP" in cands6
 

@@ -9,22 +9,24 @@ logger = logging.getLogger("bidding_utils")
 def clean_company_name_candidates(name: str) -> list[str]:
     """
     Generates a prioritized list of search query candidates for a company name
-    by progressively reducing words from full name down to core brand names:
+    ordered strictly from longest full name down to progressively reduced terms:
     e.g. "MHP Management- und IT-Beratung GmbH" ->
-    1. "MHP Management- und IT-Beratung GmbH"
-    2. "MHP Management- und IT-Beratung"
-    3. "MHP Management- IT-Beratung"
-    4. "MHP Management und IT Beratung"
-    5. "MHP Management"
-    6. "MHP"
-    7. "Management- und IT-Beratung GmbH"
-    8. "Management- und IT-Beratung"
+    1. "MHP Management- und IT-Beratung GmbH" (36 chars)
+    2. "MHP Management- und IT-Beratung" (31 chars)
+    3. "MHP Management und IT Beratung" (30 chars)
+    4. "MHP Management- IT-Beratung" (27 chars)
+    5. "MHP Management und IT" (21 chars)
+    6. "MHP Management" (14 chars)
+    7. "MHP" (3 chars)
+
+    The caller queries Tagesschau with each candidate in sequence and STOPS
+    as soon as news articles are found for a candidate.
     """
     if not name or not name.strip():
         return []
 
     raw = name.strip()
-    candidates: list[str] = []
+    raw_candidates: list[str] = []
 
     legal_forms = [
         r"Gesellschaft\s+mit\s+beschränkter\s+Haftung",
@@ -57,9 +59,9 @@ def clean_company_name_candidates(name: str) -> list[str]:
         c = re.sub(r"[\s,\.-]+$", "", c).strip()
         c = re.sub(r"^\s*[\(\[\{]\s*", "", c).strip()
         c = re.sub(r"\s*[\)\]\}]\s*$", "", c).strip()
-        if c and len(c) >= 2 and c not in candidates:
+        if c and len(c) >= 2 and c not in raw_candidates:
             if not re.match(pattern_exact_legal, c, flags=re.IGNORECASE):
-                candidates.append(c)
+                raw_candidates.append(c)
 
     # 1. Full raw name
     _add(raw)
@@ -81,20 +83,23 @@ def clean_company_name_candidates(name: str) -> list[str]:
     ).strip()
     _add(no_fillers)
 
-    # 5. Extract word tokens from no_legal
-    words = [w.strip(".,()[]{}") for w in re.split(r"\s+", no_legal) if w.strip(".,()[]{}")]
+    # 5. Extract word tokens splitting on whitespace & hyphens
+    words = [w.strip(".,()[]{}-") for w in re.split(r"[\s-]+", no_legal) if w.strip(".,()[]{}-")]
+    first_token = words[0] if words else ""
 
     # 6. Progressive right-to-left word reductions
     for i in range(len(words), 0, -1):
         phrase = " ".join(words[:i])
-        phrase_clean = re.sub(r"-(?:und|&)?$", "", phrase, flags=re.IGNORECASE).strip()
-        phrase_clean = re.sub(r"\b(und|&)\b$", "", phrase_clean, flags=re.IGNORECASE).strip()
+        phrase_clean = re.sub(
+            r"\b(und|&|des|der|die|das|für|zur|von|mit|in|on|at|of|for)\b$",
+            "",
+            phrase,
+            flags=re.IGNORECASE,
+        ).strip()
         _add(phrase_clean)
-        phrase_space = phrase_clean.replace("-", " ")
-        _add(phrase_space)
 
-    # 7. Progressive left-to-right word reductions (dropping leading generic words)
-    raw_words = [w.strip(".,()[]{}") for w in re.split(r"\s+", raw) if w.strip(".,()[]{}")]
+    # 7. Progressive left-to-right word reductions
+    raw_words = [w.strip(".,()[]{}-") for w in re.split(r"[\s-]+", raw) if w.strip(".,()[]{}-")]
     if len(raw_words) > 1:
         for i in range(1, len(raw_words)):
             phrase = " ".join(raw_words[i:])
@@ -102,4 +107,22 @@ def clean_company_name_candidates(name: str) -> list[str]:
             _add(phrase)
             _add(phrase_no_legal)
 
-    return candidates
+    # Separate candidates: primary (containing brand token) vs secondary
+    primary = []
+    secondary = []
+
+    for c in raw_candidates:
+        if first_token and first_token.lower() in c.lower():
+            primary.append(c)
+        else:
+            secondary.append(c)
+
+    primary.sort(key=lambda s: len(s), reverse=True)
+    secondary.sort(key=lambda s: len(s), reverse=True)
+
+    final_candidates = []
+    for c in primary + secondary:
+        if c not in final_candidates:
+            final_candidates.append(c)
+
+    return final_candidates
