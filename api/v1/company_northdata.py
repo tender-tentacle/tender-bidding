@@ -79,6 +79,9 @@ async def scrape_company_northdata(company_id: str, request: ScrapeNorthDataRequ
         if request.url and ("northdata.de" in request.url or "northdata.com" in request.url or "northdata." in request.url)
         else f"https://www.northdata.de/{quote(company_id)}"
     )
+    if not target_url.startswith("http://") and not target_url.startswith("https://"):
+        target_url = f"https://{target_url}"
+
     logger.info(f"Manual North Data scrape requested for {company_id} with URL {target_url} (raw: {request.url})")
 
 

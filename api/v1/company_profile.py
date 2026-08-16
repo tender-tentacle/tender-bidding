@@ -231,7 +231,7 @@ async def summarize_company_data(company_id: str, summary_type: str, db: AsyncSe
     from models.bid import CompanyJobEntry, CompanyMood, CompanyRegisterEntry
     from sqlalchemy import select
 
-    allowed_types = ["financial", "hiring", "buyer_reputation", "mhp_reputation", "news"]
+    allowed_types = ["financial", "hiring", "buyer_reputation", "mhp_reputation", "news", "executive"]
     if summary_type not in allowed_types:
         raise HTTPException(status_code=400, detail="Invalid summary type")
 
@@ -246,12 +246,13 @@ async def summarize_company_data(company_id: str, summary_type: str, db: AsyncSe
         profile = CompanyProfile(company_id=company_id, crawled_date=datetime.utcnow())
         db.add(profile)
 
-    # Check cache
-    summary_field = f"{summary_type}_summary"
-    date_field = f"{summary_type}_summary_date"
+    # Check cache (normalize executive to news for storage field if needed)
+    effective_summary_type = "news" if summary_type == "executive" else summary_type
+    summary_field = f"{effective_summary_type}_summary"
+    date_field = f"{effective_summary_type}_summary_date"
 
-    existing_summary = getattr(profile, summary_field)
-    existing_date = getattr(profile, date_field)
+    existing_summary = getattr(profile, summary_field, None)
+    existing_date = getattr(profile, date_field, None)
 
     if existing_summary and existing_date and existing_date > thirty_days_ago:
         logger.info(f"Returning cached {summary_type} summary for {company_id}")
@@ -261,24 +262,24 @@ async def summarize_company_data(company_id: str, summary_type: str, db: AsyncSe
     raw_data = {"company_name": company_id}
     prompt_id = ""
 
-    if summary_type == "financial":
+    if summary_type in ("financial",):
         res = await db.execute(select(CompanyRegisterEntry).where(CompanyRegisterEntry.company_id == company_id))
         docs = res.scalars().all()
         raw_data["financial_data"] = [
             {"title": d.title, "content": d.content, "date": str(d.published_date)} for d in docs
         ]
         prompt_id = "bidding_financial_summary"
-    elif summary_type == "hiring":
+    elif summary_type in ("hiring",):
         res = await db.execute(select(CompanyJobEntry).where(CompanyJobEntry.company_id == company_id))
         jobs = res.scalars().all()
         raw_data["jobs_data"] = [{"title": j.title, "content": j.content} for j in jobs]
         prompt_id = "bidding_hiring_summary"
-    elif summary_type == "buyer_reputation":
+    elif summary_type in ("buyer_reputation",):
         res = await db.execute(select(CompanyMood).where(CompanyMood.company_id == company_id))
         moods = res.scalars().all()
         raw_data["mood_data"] = [{"title": m.title, "content": m.content, "rating": m.rating} for m in moods]
         prompt_id = "bidding_buyer_reputation"
-    elif summary_type == "news":
+    elif summary_type in ("news", "executive"):
         from models.bid import CompanyNewsEntry
 
         res = await db.execute(select(CompanyNewsEntry).where(CompanyNewsEntry.company_id == company_id))
