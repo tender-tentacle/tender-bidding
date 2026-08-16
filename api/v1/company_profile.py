@@ -117,7 +117,7 @@ async def get_company_profile(company_id: str, db: AsyncSession = Depends(get_db
 
     if profile and profile.crawled_date:
         crawled_dt = profile.crawled_date.replace(tzinfo=None) if profile.crawled_date.tzinfo else profile.crawled_date
-        if crawled_dt > thirty_days_ago:
+        if crawled_dt > thirty_days_ago and profile.description:
             logger.info(f"Returning cached profile for {company_id}")
             return profile
 
