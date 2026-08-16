@@ -521,6 +521,20 @@ class CompanyNorthData(Base):
     crawled_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class CompanyHandelsregister(Base):
+    """Handelsregister (de) company master data entry."""
+
+    __tablename__ = "bid_company_handelsregister"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(255), index=True, unique=True)
+    source: Mapped[str | None] = mapped_column(String(255), default="handelsregister.de")
+    query: Mapped[str | None] = mapped_column(String(1000))
+    documents: Mapped[dict | list | None] = mapped_column(JSON)
+    crawled_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+
 
 
 
