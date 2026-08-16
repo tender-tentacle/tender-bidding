@@ -37,7 +37,8 @@ class CompanyNewsEntrySchema(BaseModel):
 
 async def run_deep_research_company_news(company_name: str, newsroom_urls: list[str] | None = None) -> dict:
     """Queries AI Connector using model_tier='deep-research' for dual-section press news & blog synthesis."""
-    ai_url = os.getenv("AI_URL", "http://ai:8004")
+    from core.config import AI_URL
+    ai_url = AI_URL or os.getenv("AI_URL", "http://ai:8004")
     prompt_payload = {
         "prompt_id": "company_deep_research_news",
         "input_text": f"Execute deep research for news and official blog articles regarding company: '{company_name}'. Official newsroom/blog URLs: {newsroom_urls or []}.",
@@ -70,11 +71,14 @@ async def run_deep_research_company_news(company_name: str, newsroom_urls: list[
         }
     }
     try:
-        async with httpx.AsyncClient(timeout=45.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             res = await client.post(f"{ai_url}/api/inference", json=prompt_payload)
             if res.status_code == 200:
                 body = res.json()
-                raw_out = body.get("data", {}).get("raw_output")
+                data_field = body.get("data", {})
+                if isinstance(data_field, dict) and ("press_news" in data_field or "company_blog" in data_field):
+                    return data_field
+                raw_out = data_field.get("raw_output") if isinstance(data_field, dict) else body.get("raw_output")
                 if isinstance(raw_out, str):
                     import json
                     cleaned = raw_out.strip()
