@@ -41,7 +41,13 @@ async def run_deep_research_company_news(company_name: str, newsroom_urls: list[
     ai_url = AI_URL or os.getenv("AI_URL", "http://ai:8004")
     prompt_payload = {
         "prompt_id": "company_deep_research_news",
-        "input_text": f"Execute deep research for news and official blog articles regarding company: '{company_name}'. Official newsroom/blog URLs: {newsroom_urls or []}.",
+        "input_text": (
+            f"Execute deep research for news and official blog articles regarding company: '{company_name}'. "
+            f"Official newsroom/blog URLs: {newsroom_urls or []}. "
+            "CRITICAL INSTRUCTION: Do NOT summarize entire newsroom/pressroom portal pages as a single entry. "
+            "Extract EACH individual press release, news article, and blog post as a separate item in the 'press_news' and 'company_blog' arrays "
+            "(extract ALL individual articles with distinct titles, links, publication dates, and summaries)."
+        ),
         "model_tier": "deep-research",
         "output_structure": {
             "press_news": [
