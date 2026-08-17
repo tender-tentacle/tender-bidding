@@ -1,7 +1,8 @@
 """Unit test: Verify Tagesschau news scan fallback for MHP Management- und IT-Beratung GmbH when direct API returns 0 items or political false positives."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from api.v1.company_summary import run_stage2_market_and_news
 from models.bid import CompanyNewsEntry
 

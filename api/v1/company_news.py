@@ -41,6 +41,7 @@ async def fetch_official_newsroom_articles(company_name: str) -> list[dict]:
     (e.g., MHP, Porsche, GIZ, Dataport, KfW) when LLM or open APIs return 0 results.
     """
     import hashlib
+
     from bs4 import BeautifulSoup
 
     c_lower = company_name.lower().strip()

@@ -1,7 +1,8 @@
 """Unit test: Verify official corporate newsroom extraction fallback for MHP Management- und IT-Beratung GmbH."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from api.v1.company_news import fetch_official_newsroom_articles, scrape_company_news
 
 

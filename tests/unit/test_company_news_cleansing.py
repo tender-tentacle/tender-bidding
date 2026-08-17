@@ -39,6 +39,7 @@ async def test_mhp_political_news_cleansing():
 async def test_get_company_news_cleanses_political_db_entries():
     """Verify get_company_news filters out political false positive entries when returning from DB cache."""
     from unittest.mock import AsyncMock, MagicMock
+
     from api.v1.company_news import get_company_news
     from models.bid import CompanyNewsEntry
 

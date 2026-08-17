@@ -1,5 +1,7 @@
 import hashlib
+import json
 import logging
+import os
 import re
 from datetime import UTC, datetime
 
@@ -355,8 +357,8 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
                                     if isinstance(parsed, dict) and (parsed.get("comments") or parsed.get("metadata")):
                                         scraped_payload = parsed
                                         break
-                                except Exception:
-                                    pass
+                                except Exception as e:
+                                    logger.debug(f"JSON parse error for {ep}: {e}")
                 except Exception as req_err:
                     logger.debug(f"Direct AI Connector endpoint {ep} failed: {req_err}")
 
