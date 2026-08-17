@@ -44,9 +44,11 @@ async def run_deep_research_company_news(company_name: str, newsroom_urls: list[
         "input_text": (
             f"Execute deep research for news and official blog articles regarding company: '{company_name}'. "
             f"Official newsroom/blog URLs: {newsroom_urls or []}. "
-            "CRITICAL INSTRUCTION: Do NOT summarize entire newsroom/pressroom portal pages as a single entry. "
-            "Extract EACH individual press release, news article, and blog post as a separate item in the 'press_news' and 'company_blog' arrays "
-            "(extract ALL individual articles with distinct titles, links, publication dates, and summaries)."
+            "CRITICAL INSTRUCTIONS:\n"
+            "1. Time Window: Extract news, press releases, and blog posts published within the LAST 2 YEARS (730 days).\n"
+            "2. Quantity Target: Extract between 20 to 100 distinct items for 'press_news' (external media & press coverage) "
+            "and between 20 to 100 distinct items for 'company_blog' (official corporate newsroom and blog articles).\n"
+            "3. Formatting: Do NOT summarize portal pages as single entries. Extract EACH individual article with its distinct title, link, 2-3 sentence summary, publication date (YYYY-MM-DD), sentiment_score (0-100), sentiment_label, sentiment_rationale, and key_topics."
         ),
         "model_tier": "deep-research",
         "output_structure": {
