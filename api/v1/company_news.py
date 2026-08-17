@@ -203,7 +203,10 @@ async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
                         timeout=25.0,
                     )
                     if res.status_code == 200:
-                        scraped_articles.extend(res.json())
+                        for nr_item in res.json():
+                            nr_item["source_type"] = "company_blog"
+                            nr_item["category"] = "Corporate Newsroom & Blog"
+                            scraped_articles.append(nr_item)
                 except Exception as e:
                     logger.warning(f"Failed to crawl newsroom URL {url}: {e}")
         else:
@@ -213,7 +216,10 @@ async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
                     f"{crawling_url}/api/v1/scrape/newsroom", json={"company_name": primary_query}, timeout=25.0
                 )
                 if res.status_code == 200:
-                    scraped_articles.extend(res.json())
+                    for nr_item in res.json():
+                        nr_item["source_type"] = "company_blog"
+                        nr_item["category"] = "Corporate Newsroom & Blog"
+                        scraped_articles.append(nr_item)
             except Exception as e:
                 logger.warning(f"Failed to discover/crawl newsrooms for {primary_query}: {e}")
 
