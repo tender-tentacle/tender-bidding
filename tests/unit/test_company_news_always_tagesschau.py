@@ -1,6 +1,8 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
 from api.v1.company_news import scrape_company_news
+
 
 @pytest.mark.asyncio
 async def test_scrape_company_news_always_merges_tagesschau():

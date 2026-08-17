@@ -6,7 +6,6 @@ Validates:
 3. Bidding MS news scraping endpoint persistence in DB as CompanyNewsEntry models.
 """
 
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest

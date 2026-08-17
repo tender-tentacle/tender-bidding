@@ -1,5 +1,5 @@
-import pytest
 from datetime import UTC, datetime, timedelta
+
 
 def normalize_news_date(val: str | None) -> str:
     if not val or not str(val).strip():

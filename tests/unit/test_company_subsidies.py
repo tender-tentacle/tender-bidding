@@ -4,6 +4,7 @@ Unit tests for Company Subsidies & Grants API router
 """
 
 from unittest.mock import patch
+
 import pytest
 from api.v1.company_subsidies import get_company_subsidies, scrape_company_subsidies
 from fastapi import HTTPException

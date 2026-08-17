@@ -502,10 +502,10 @@ async def score_articles_with_ai(articles: list[dict], company_name: str = "", d
     high_pos_kw = ["auszeichnung", "preis", "rekord", "durchbruch", "leben retten", "retten", "antibiotika", "forschungserfolg", "gewinnt", "nachhaltigkeitspreis"]
     mod_pos_kw = ["forschungsprojekt", "beschleunigt", "entwicklung", "innovation", "ortungssystem", "wachstum", "investition", "eröffnung", "erfolg", "erweitert", "förderung"]
 
-    political_fps = ["türkei", "ankara", "pkk", "wolfsgruss", "partei", "erdogan", "sahel-verein", "nationalistische", "bündnis 90", "landtagswahl", "bundestagswahl"]
+    political_fps = ["türkei", "ankara", "pkk", "wolfsgruss", "partei", "erdogan", "sahel-verein", "nationalistische", "bündnis 90", "landtagswahl", "bundestagswahl", "asien"]
 
     for a in articles:
-        text = f"{a.get('title', '')} {a.get('content', '')}".lower()
+        text = f"{a.get('title', '')} {a.get('content', '')} {a.get('summary', '')} {a.get('link', '')} {a.get('url', '')}".lower()
         c_lower = company_name.lower().strip()
         if any(m in c_lower for m in ["mhp", "bvl", "swr"]):
             if any(kw in text for kw in political_fps):
@@ -576,6 +576,57 @@ async def run_stage2_market_and_news(company_name: str, db: AsyncSession | None 
                             break
         except Exception as direct_e:
             logger.warning(f"Direct Tagesschau API call failed for {company_name}: {direct_e}")
+
+        # Fallback 1: Retrieve cached CompanyNewsEntry records from DB
+        if not scraped_articles and db is not None:
+            try:
+                from models.bid import CompanyNewsEntry
+                from sqlalchemy import func, select
+                db_res = await db.execute(
+                    select(CompanyNewsEntry).where(
+                        (CompanyNewsEntry.company_id == company_name)
+                        | (func.lower(CompanyNewsEntry.company_id) == company_name.lower())
+                    )
+                )
+                db_entries = db_res.scalars().all()
+                if db_entries:
+                    for e in db_entries:
+                        scraped_articles.append({
+                            "title": e.title,
+                            "link": e.link,
+                            "content": e.content or e.summary or "",
+                            "published_at": e.published_date,
+                            "sentiment_score": e.sentiment_score if e.sentiment_score is not None else 50,
+                            "sentiment_label": e.sentiment_label or "Neutral",
+                            "sentiment_rationale": e.sentiment_rationale or "",
+                            "category": e.category or "Tagesschau Presseecho",
+                            "source_type": e.source_type or "press",
+                        })
+                    logger.info(f"Loaded {len(scraped_articles)} cached company news entries from DB for '{company_name}'.")
+            except Exception as db_err:
+                logger.debug(f"Failed to fetch cached company news entries for {company_name}: {db_err}")
+
+        # Fallback 2: Execute Deep Research / crawling fallback news scraping
+        if not scraped_articles and db is not None:
+            try:
+                from api.v1.company_news import scrape_company_news
+                scraped_news = await scrape_company_news(company_id=company_name, db=db)
+                if scraped_news:
+                    for e in scraped_news:
+                        scraped_articles.append({
+                            "title": getattr(e, "title", None) or (e.get("title") if isinstance(e, dict) else ""),
+                            "link": getattr(e, "link", None) or (e.get("link") if isinstance(e, dict) else ""),
+                            "content": getattr(e, "content", None) or (e.get("content") if isinstance(e, dict) else ""),
+                            "published_at": getattr(e, "published_date", None) or (e.get("published_date") if isinstance(e, dict) else ""),
+                            "sentiment_score": getattr(e, "sentiment_score", 50) if hasattr(e, "sentiment_score") else (e.get("sentiment_score", 50) if isinstance(e, dict) else 50),
+                            "sentiment_label": getattr(e, "sentiment_label", "Neutral") if hasattr(e, "sentiment_label") else (e.get("sentiment_label", "Neutral") if isinstance(e, dict) else "Neutral"),
+                            "sentiment_rationale": getattr(e, "sentiment_rationale", "") if hasattr(e, "sentiment_rationale") else (e.get("sentiment_rationale", "") if isinstance(e, dict) else ""),
+                            "category": getattr(e, "category", "Tagesschau Presseecho") if hasattr(e, "category") else (e.get("category", "Tagesschau Presseecho") if isinstance(e, dict) else "Tagesschau Presseecho"),
+                            "source_type": getattr(e, "source_type", "press") if hasattr(e, "source_type") else (e.get("source_type", "press") if isinstance(e, dict) else "press"),
+                        })
+                    logger.info(f"Triggered scrape_company_news fallback for '{company_name}', retrieved {len(scraped_articles)} articles.")
+            except Exception as news_err:
+                logger.debug(f"Failed to trigger fallback news scraping for {company_name}: {news_err}")
 
     timeline = build_24_month_timeline(scraped_articles)
 

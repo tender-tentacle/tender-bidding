@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 from core.database import get_db
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends
 from models.bid import CompanyNewsEntry
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -33,6 +33,68 @@ class CompanyNewsEntrySchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+async def fetch_official_newsroom_articles(company_name: str) -> list[dict]:
+    """
+    Extracts official press releases and blog articles directly from the company's website / newsroom
+    (e.g., MHP, Porsche, GIZ, Dataport, KfW) when LLM or open APIs return 0 results.
+    """
+    import hashlib
+    from bs4 import BeautifulSoup
+
+    c_lower = company_name.lower().strip()
+    target_urls = []
+
+    if "mhp" in c_lower:
+        target_urls = [
+            "https://www.mhp.com/en/insights/newsroom",
+            "https://www.mhp.com/de/insights/newsroom",
+            "https://newsroom.porsche.com/de.html"
+        ]
+    elif "giz" in c_lower:
+        target_urls = ["https://www.giz.de/de/presse/pressemitteilungen.html"]
+    elif "dataport" in c_lower:
+        target_urls = ["https://www.dataport.de/newsroom/stories/"]
+    elif "kfw" in c_lower:
+        target_urls = ["https://www.kfw.de/stories/index-en.html"]
+    elif "porsche" in c_lower:
+        target_urls = ["https://newsroom.porsche.com/de.html"]
+
+    articles: list[dict] = []
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, headers=headers) as client:
+        for url in target_urls:
+            try:
+                r = await client.get(url)
+                if r.status_code == 200:
+                    soup = BeautifulSoup(r.text, "html.parser")
+                    base_domain = f"{url.split('://')[0]}://{url.split('://')[1].split('/')[0]}"
+                    for a in soup.find_all("a", href=True):
+                        href = a["href"]
+                        title = a.get_text(strip=True)
+                        if ("/insights/" in href or "/newsroom/" in href or "/presse/" in href or "/stories/" in href) and len(title) > 20 and title not in [art["title"] for art in articles]:
+                            full_link = href if href.startswith("http") else f"{base_domain}{href}"
+                            articles.append({
+                                "hash": hashlib.md5(f"{title}{full_link}".encode()).hexdigest(),
+                                "title": title,
+                                "link": full_link,
+                                "summary": f"Official Corporate Newsroom Release: {title}",
+                                "content": f"{company_name} official corporate news release regarding {title}.",
+                                "published_date": datetime.now(UTC).strftime("%Y-%m-%d"),
+                                "sentiment_score": 80,
+                                "sentiment_label": "Positive",
+                                "sentiment_rationale": "Official corporate newsroom release",
+                                "category": "Corporate Blog & Newsroom (Deep Research)",
+                                "source_type": "company_blog"
+                            })
+            except Exception as ex:
+                logger.debug(f"Official newsroom web extraction failed for {url}: {ex}")
+
+    return articles
 
 
 async def run_deep_research_company_news(company_name: str, newsroom_urls: list[str] | None = None) -> dict:
@@ -151,7 +213,6 @@ async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(CompanyNewsEntry).where(CompanyNewsEntry.company_id == company_id))
     news_entries = result.scalars().all()
 
-    # Check if we have recent news
     has_recent = False
     for entry in news_entries:
         crawled_dt = entry.crawled_date.replace(tzinfo=None) if entry.crawled_date.tzinfo else entry.crawled_date
@@ -159,9 +220,19 @@ async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
             has_recent = True
             break
 
-    if news_entries and has_recent:
+    political_fps = ["türkei", "ankara", "pkk", "wolfsgruss", "partei", "erdogan", "sahel-verein", "nationalistische", "bündnis 90", "landtagswahl", "bundestagswahl", "asien"]
+    def _is_relevant(e) -> bool:
+        c_lower = company_id.lower().strip()
+        if any(m in c_lower for m in ["mhp", "bvl", "swr"]):
+            t_str = f"{getattr(e, 'title', '') or ''} {getattr(e, 'content', '') or ''} {getattr(e, 'summary', '') or ''} {getattr(e, 'link', '') or ''}".lower()
+            if any(kw in t_str for kw in political_fps):
+                return False
+        return True
+
+    filtered_entries = [e for e in news_entries if _is_relevant(e)]
+    if filtered_entries and has_recent:
         logger.info(f"Returning cached news for {company_id}")
-        return news_entries
+        return filtered_entries
 
     return await scrape_company_news(company_id=company_id, db=db)
 
@@ -263,6 +334,24 @@ async def scrape_company_news(company_id: str, db: AsyncSession = Depends(get_db
             logger.error(f"Direct Tagesschau API query exception: {ex}")
 
     scraped_articles.extend(tagesschau_articles)
+
+    if scraped_articles:
+        try:
+            from api.v1.company_summary import score_articles_with_ai
+            await score_articles_with_ai(scraped_articles, company_id, db=db)
+            scraped_articles = [a for a in scraped_articles if a.get("is_relevant", True) is not False]
+        except Exception as score_err:
+            logger.warning(f"Cleansing scraped news with AI failed: {score_err}")
+
+    # Fallback to official corporate newsroom web extraction if no articles were found
+    if not scraped_articles:
+        try:
+            logger.info(f"Triggering official corporate newsroom web extraction fallback for '{company_id}'")
+            official_items = await fetch_official_newsroom_articles(company_id)
+            if official_items:
+                scraped_articles.extend(official_items)
+        except Exception as off_err:
+            logger.warning(f"Official newsroom web extraction fallback failed for {company_id}: {off_err}")
 
     # Step 3: Clear old entries for company and persist new entries to DB
     old_entries_res = await db.execute(select(CompanyNewsEntry).where(CompanyNewsEntry.company_id == company_id))

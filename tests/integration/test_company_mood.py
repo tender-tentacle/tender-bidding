@@ -39,8 +39,8 @@ async def test_get_company_mood_calls_crawling_ms_and_caches():
 
     async def mock_post(self, url, *args, **kwargs):
         url_str = str(url)
-        if "scrape/kununu" in url_str:
-            return MockResponse(mock_kununu_data)
+        if "api/inference" in url_str or "scrape/kununu" in url_str:
+            return MockResponse({"status": "success", "data": mock_kununu_data})
         if "taxonomy" in url_str:
             return MockResponse({})
         return await original_post(self, url, *args, **kwargs)
@@ -114,9 +114,9 @@ async def test_manual_scrape_kununu_skips_when_cache_under_30_days():
     async def mock_post(self, url, *args, **kwargs):
         nonlocal post_call_count
         url_str = str(url)
-        if "scrape/kununu" in url_str:
+        if "api/inference" in url_str or "scrape/kununu" in url_str:
             post_call_count += 1
-            return MockResponse(mock_kununu_data)
+            return MockResponse({"status": "success", "data": mock_kununu_data})
         if "taxonomy" in url_str:
             return MockResponse({})
         return await original_post(self, url, *args, **kwargs)
@@ -173,9 +173,9 @@ async def test_manual_scrape_kununu_forces_rescrape_when_force_true():
     async def mock_post(self, url, *args, **kwargs):
         nonlocal post_call_count
         url_str = str(url)
-        if "scrape/kununu" in url_str:
+        if "api/inference" in url_str or "scrape/kununu" in url_str:
             post_call_count += 1
-            return MockResponse(mock_kununu_data)
+            return MockResponse({"status": "success", "data": mock_kununu_data})
         if "taxonomy" in url_str:
             return MockResponse({})
         return await original_post(self, url, *args, **kwargs)
@@ -246,8 +246,8 @@ async def test_manual_scrape_glassdoor_mood_endpoint():
 
     async def mock_post(self, url, *args, **kwargs):
         url_str = str(url)
-        if "scrape/glassdoor" in url_str:
-            return MockResponse(mock_glassdoor_data)
+        if "api/inference" in url_str or "glassdoor" in url_str:
+            return MockResponse({"status": "success", "data": mock_glassdoor_data})
         if "taxonomy" in url_str:
             return MockResponse({})
         return await original_post(self, url, *args, **kwargs)

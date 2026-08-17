@@ -1,12 +1,10 @@
 """Integration test verifying 20+ external press & media news items for MHP Management- und IT-Beratung GmbH."""
 
 import pytest
-from sqlalchemy import select
+from api.v1.company_news import scrape_company_news
+from models.bid import Base
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
-
-from api.v1.company_news import scrape_company_news
-from models.bid import Base, CompanyNewsEntry
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 

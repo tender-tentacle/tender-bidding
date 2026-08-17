@@ -1,13 +1,10 @@
 """Integration test verifying 20+ company news & blog items with summaries for MHP Management- und IT-Beratung GmbH."""
 
-import json
 import pytest
-from sqlalchemy import select
+from api.v1.company_news import scrape_company_news
+from models.bid import Base
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
-
-from api.v1.company_news import get_company_news, scrape_company_news, normalize_news_date
-from models.bid import Base, CompanyNewsEntry
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 

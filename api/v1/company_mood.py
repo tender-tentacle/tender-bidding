@@ -4,7 +4,7 @@ import re
 from datetime import UTC, datetime
 
 import httpx
-from core.config import AI_URL, CRAWLING_MS_URL, DISTRIBUTION_MS_URL
+from core.config import AI_URL, DISTRIBUTION_MS_URL
 from core.database import get_db
 from fastapi import APIRouter, Depends, HTTPException
 from models.bid import CompanyJobEntry, CompanyMood, CompanySalaryEntry
@@ -277,34 +277,95 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
         is_successful_crawl = False
 
         try:
-            scrape_path = "glassdoor" if is_glassdoor else "kununu"
-            existing_count = len(records)
-            crawling_response = await client.post(
-                f"{CRAWLING_MS_URL}/api/v1/scrape/{scrape_path}",
-                json={"query": company_id, "url": target_url, "existing_count": existing_count}
+            prompt_text = (
+                f"Navigate to '{target_url}' or perform web search for Kununu employee ratings and reviews for company '{company_id}'. "
+                "Extract real verbatim Kununu employee reviews, ratings (overall, career, culture, environment, diversity, salary/benefits), "
+                "job titles, average salaries, and open job positions. "
+                "Return valid JSON matching this exact structure:\n"
+                "{\n"
+                '  "metadata": {\n'
+                '    "discovered_url": "' + target_url + '",\n'
+                '    "overall_score": 4.2,\n'
+                '    "review_count": 350,\n'
+                '    "summary_text": "Company review summary...",\n'
+                '    "score_career": 4.1,\n'
+                '    "score_culture": 4.3,\n'
+                '    "score_environment": 4.2,\n'
+                '    "score_diversity": 4.4,\n'
+                '    "salary_satisfaction_percentage": 78,\n'
+                '    "salary_benefits_score": 4.0\n'
+                "  },\n"
+                '  "comments": [\n'
+                "    {\n"
+                '      "job_title": "IT Consultant",\n'
+                '      "title": "Super Arbeitsklima",\n'
+                '      "content": "Verbatim employee review text...",\n'
+                '      "rating": 4.5,\n'
+                '      "published_date": "2026-08-01"\n'
+                "    }\n"
+                "  ],\n"
+                '  "salaries": [\n'
+                '    {"job_title": "IT Consultant", "avg_salary": 72000, "sample_count": 25}\n'
+                "  ],\n"
+                '  "jobs": [\n'
+                '    {"title": "Senior Cloud Engineer", "location": "Ludwigsburg", "category": "IT & Software"}\n'
+                "  ]\n"
+                "}"
             )
-            if crawling_response.status_code in (402, 429):
-                err_detail = "Firecrawl API credit limit or quota reached."
-                try:
-                    err_detail = crawling_response.json().get("detail", err_detail)
-                except Exception as e:
-                    logger.debug(f"Could not parse detail from crawling response: {e}")
-                logger.error(f"Firecrawl quota limit for {company_id}: {err_detail}")
-                raise HTTPException(status_code=402, detail=err_detail)
 
-            if crawling_response.status_code != 200:
-                err_detail = f"{platform_name.capitalize()} crawl failed with HTTP {crawling_response.status_code}"
+            ai_payload = {
+                "prompt_id": "company_research",
+                "model_tier": "large",
+                "enable_web_tools": True,
+                "input_text": prompt_text,
+            }
+
+            base_ai_url = (AI_URL or os.getenv("AI_URL", "http://localhost:8004")).rstrip("/")
+            ai_endpoints = [
+                f"{base_ai_url}/api/inference",
+                f"{base_ai_url}/ms/ai/api/inference",
+                "http://localhost:8004/api/inference",
+                "http://127.0.0.1:8004/api/inference",
+                "http://ai-app:8000/api/inference",
+                "http://ai-app-test:8000/api/inference",
+            ]
+            seen_ai = set()
+            unique_ai_endpoints = [u for u in ai_endpoints if not (u in seen_ai or seen_ai.add(u))]
+
+            scraped_payload = None
+            for ep in unique_ai_endpoints:
                 try:
-                    err_detail = crawling_response.json().get("detail", err_detail)
-                except Exception as exc:
-                    logger.debug(f"Could not parse JSON detail from crawling response: {exc}")
-                logger.error(f"{platform_name.capitalize()} crawl error for {company_id}: {err_detail}")
+                    logger.info(f"Attempting direct Kununu AI Connector scrape for {company_id} via {ep}...")
+                    res = await client.post(ep, json=ai_payload)
+                    if res.status_code == 200:
+                        body = res.json()
+                        if isinstance(body, dict) and (body.get("comments") or body.get("metadata") or body.get("salaries")):
+                            scraped_payload = body
+                            break
+                        data = body.get("data", {}) if isinstance(body, dict) else {}
+                        if isinstance(data, dict) and (data.get("comments") or data.get("metadata") or data.get("salaries")):
+                            scraped_payload = data
+                            break
+                        raw_out = data.get("raw_output") if isinstance(data, dict) else (body.get("raw_output") if isinstance(body, dict) else None)
+                        if isinstance(raw_out, str) and len(raw_out.strip()) > 30:
+                            match = re.search(r"(\{.*\})", raw_out, re.DOTALL)
+                            if match:
+                                try:
+                                    parsed = json.loads(match.group(1))
+                                    if isinstance(parsed, dict) and (parsed.get("comments") or parsed.get("metadata")):
+                                        scraped_payload = parsed
+                                        break
+                                except Exception:
+                                    pass
+                except Exception as req_err:
+                    logger.debug(f"Direct AI Connector endpoint {ep} failed: {req_err}")
+
+            if not scraped_payload:
+                logger.error(f"AI Connector scrape for {company_id} returned no data.")
                 if records:
-                    logger.info(f"Returning {len(records)} cached records after crawl failure.")
+                    logger.info(f"Returning {len(records)} cached records after AI Connector scrape returned no data.")
                     return records
-                raise HTTPException(status_code=502, detail=err_detail)
-
-            scraped_payload = crawling_response.json()
+                raise HTTPException(status_code=502, detail=f"{platform_name.capitalize()} AI Connector scrape failed or returned empty payload.")
 
             payload = scraped_payload if isinstance(scraped_payload, dict) else {"comments": scraped_payload}
             scraped_comments = payload.get("comments", [])
@@ -319,6 +380,7 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
             logger.error(f"Scraping failed or blocked for {company_id}: {e}\n{traceback.format_exc()}")
             if records:
                 return records
+            raise HTTPException(status_code=502, detail=f"{platform_name.capitalize()} scraper error: {e}")
 
     new_moods = []
     for comment in scraped_comments:

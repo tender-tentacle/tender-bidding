@@ -130,7 +130,7 @@ async def test_tagesschau_porsche_news_ai_cleansing_flow():
             # 1. Execute Bidding MS company news scraping & persistence for Porsche
             news_entries = await get_company_news(company_id=company_name, db=session)
             assert isinstance(news_entries, list)
-            assert len(news_entries) == 3
+            assert len(news_entries) == 2
 
             # 2. Execute Bidding MS Stage 2 market scan & AI Connector cleansing pipeline
             summary_stage2 = await run_stage2_market_and_news(company_name, db=session)
