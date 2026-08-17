@@ -149,6 +149,13 @@ async def get_company_mood(company_id: str, db: AsyncSession = Depends(get_db)):
     )
     result = await db.execute(stmt)
     records = result.scalars().all()
+    for r in records:
+        if not r.source_platform:
+            url_lower = (r.discovered_url or "").lower()
+            if "glassdoor" in url_lower:
+                r.source_platform = "glassdoor"
+            else:
+                r.source_platform = "kununu"
     return records
 
 
