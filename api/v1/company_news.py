@@ -36,9 +36,20 @@ class CompanyNewsEntrySchema(BaseModel):
 
 
 async def run_deep_research_company_news(company_name: str, newsroom_urls: list[str] | None = None) -> dict:
-    """Queries AI Connector using model_tier='deep-research' for dual-section press news & blog synthesis."""
+    """Queries AI Connector using model_tier='fast' or 'deep-research' for dual-section press news & blog synthesis."""
     from core.config import AI_URL
-    ai_url = AI_URL or os.getenv("AI_URL", "http://ai:8004")
+    base_ai_url = (AI_URL or os.getenv("AI_URL", "http://localhost:8004")).rstrip("/")
+    candidate_ai_urls = [
+        f"{base_ai_url}/api/inference",
+        f"{base_ai_url}/ms/ai/api/inference",
+        "http://localhost:8004/api/inference",
+        "http://127.0.0.1:8004/api/inference",
+        "http://ai-app:8000/api/inference",
+        "http://ai-app-test:8000/api/inference",
+    ]
+    seen_ai = set()
+    unique_ai_urls = [u for u in candidate_ai_urls if not (u in seen_ai or seen_ai.add(u))]
+
     prompt_payload = {
         "prompt_id": "company_deep_research_news",
         "input_text": (
@@ -80,33 +91,34 @@ async def run_deep_research_company_news(company_name: str, newsroom_urls: list[
             ]
         }
     }
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            res = await client.post(f"{ai_url}/api/inference", json=prompt_payload)
-            if res.status_code == 200:
-                body = res.json()
-                data_field = body.get("data", {})
-                if isinstance(data_field, dict) and ("press_news" in data_field or "company_blog" in data_field):
-                    return data_field
-                raw_out = data_field.get("raw_output") if isinstance(data_field, dict) else body.get("raw_output")
-                if isinstance(raw_out, str):
-                    import json
-                    cleaned = raw_out.strip()
-                    if cleaned.startswith("```json"):
-                        cleaned = cleaned.split("```json", 1)[1].split("```", 1)[0].strip()
-                    elif cleaned.startswith("```"):
-                        cleaned = cleaned.split("```", 1)[1].split("```", 1)[0].strip()
-                    try:
-                        return json.loads(cleaned)
-                    except json.JSONDecodeError as ex:
-                        logger.error(f"❌ JSON parsing failure: Deep Research output for '{company_name}' could not be parsed: {ex}. Raw snippet: {cleaned[:300]}")
-                        return {}
-                if isinstance(raw_out, dict):
-                    return raw_out
-            else:
-                logger.error(f"❌ AI Connector HTTP {res.status_code} for '{company_name}': {res.text[:300]}")
-    except Exception as e:
-        logger.warning(f"Deep Research call exception for {company_name}: {e}")
+    for ep_url in unique_ai_urls:
+        try:
+            logger.info(f"Attempting AI Connector company news research for '{company_name}' via {ep_url}...")
+            async with httpx.AsyncClient(timeout=45.0) as client:
+                res = await client.post(ep_url, json=prompt_payload)
+                if res.status_code == 200:
+                    body = res.json()
+                    data_field = body.get("data", {})
+                    if isinstance(data_field, dict) and ("press_news" in data_field or "company_blog" in data_field):
+                        return data_field
+                    raw_out = data_field.get("raw_output") if isinstance(data_field, dict) else body.get("raw_output")
+                    if isinstance(raw_out, str):
+                        import json
+                        cleaned = raw_out.strip()
+                        if cleaned.startswith("```json"):
+                            cleaned = cleaned.split("```json", 1)[1].split("```", 1)[0].strip()
+                        elif cleaned.startswith("```"):
+                            cleaned = cleaned.split("```", 1)[1].split("```", 1)[0].strip()
+                        try:
+                            parsed = json.loads(cleaned)
+                            if isinstance(parsed, dict) and ("press_news" in parsed or "company_blog" in parsed):
+                                return parsed
+                        except json.JSONDecodeError as ex:
+                            logger.error(f"❌ JSON parsing failure for '{company_name}': {ex}")
+                    if isinstance(raw_out, dict):
+                        return raw_out
+        except Exception as e:
+            logger.debug(f"AI Connector news endpoint {ep_url} failed for {company_name}: {e}")
     return {}
 
 
@@ -157,32 +169,29 @@ async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
 @router.post("/company/{company_id}/news/scrape", response_model=list[CompanyNewsEntrySchema])
 async def scrape_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
     """
-    Execute AI Connector Deep Research (model_tier='deep-research') for company press news & corporate blog.
+    Execute AI Connector Deep Research for company press news & corporate blog.
     Saves results directly to database and returns structured JSON news elements.
     """
+    import hashlib
     from urllib.parse import unquote
     company_id = unquote(company_id)
-    crawling_url = os.getenv("CRAWLING_URL", "http://tender-crawling:8001")
+    base_crawling_url = os.getenv("CRAWLING_URL", "http://localhost:8001").rstrip("/")
+    candidate_crawling_urls = [
+        f"{base_crawling_url}/api/v1/scrape/tagesschau",
+        f"{base_crawling_url}/ms/crawling/api/v1/scrape/tagesschau",
+        "http://localhost:8001/api/v1/scrape/tagesschau",
+        "http://127.0.0.1:8001/api/v1/scrape/tagesschau",
+        "http://crawling-app:8000/api/v1/scrape/tagesschau",
+        "http://crawling-app-test:8000/api/v1/scrape/tagesschau",
+    ]
+    seen_cr = set()
+    unique_crawling_urls = [u for u in candidate_crawling_urls if not (u in seen_cr or seen_cr.add(u))]
 
     # Step 1: Execute Deep Research via AI Connector
     logger.info(f"Triggering AI Connector Deep Research for company news: '{company_id}'")
     deep_res = await run_deep_research_company_news(company_id)
     press_items = deep_res.get("press_news") or []
     blog_items = deep_res.get("company_blog") or []
-    total_count = len(press_items) + len(blog_items)
-
-    if total_count == 0:
-        logger.warning(f"⚠️ Zero results warning: Deep Research returned 0 news items for company '{company_id}'")
-    elif total_count < 20:
-        logger.warning(
-            f"⚠️ Low results warning: Deep Research returned only {total_count} total items for company '{company_id}' "
-            f"(expected >= 20 items: press={len(press_items)}, blog={len(blog_items)})"
-        )
-    else:
-        logger.info(
-            f"✅ Deep Research success for company '{company_id}': extracted {total_count} total items "
-            f"(press={len(press_items)}, blog={len(blog_items)})"
-        )
 
     scraped_articles = []
     for item in press_items:
@@ -201,19 +210,57 @@ async def scrape_company_news(company_id: str, db: AsyncSession = Depends(get_db
         candidates = clean_company_name_candidates(company_id)
         logger.info(f"Fallback: Triggering Tagesschau API for '{company_id}' (candidates: {candidates})")
 
+        # Try crawling microservice candidate URLs first
         for cand in candidates:
+            for ep_url in unique_crawling_urls:
+                try:
+                    async with httpx.AsyncClient(timeout=15.0) as client:
+                        res = await client.post(ep_url, json={"query": cand})
+                        if res.status_code == 200 and res.json():
+                            for it in res.json():
+                                it["source_type"] = "press"
+                                it["category"] = it.get("category") or "Tagesschau Presseecho"
+                                scraped_articles.append(it)
+                            break
+                except Exception as e:
+                    logger.debug(f"Crawling service Tagesschau fallback failed for {ep_url}: {e}")
+            if scraped_articles:
+                break
+
+        # If crawling microservice was unreachable, query Tagesschau open API directly from bidding MS
+        if not scraped_articles:
             try:
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    res = await client.post(
-                        f"{crawling_url}/api/v1/scrape/tagesschau", json={"query": cand}, timeout=25.0
-                    )
-                    if res.status_code == 200 and res.json():
-                        for it in res.json():
-                            it["source_type"] = "press"
-                            scraped_articles.append(it)
-                        break
-            except Exception as e:
-                logger.error(f"Failed to connect to crawling service for Tagesschau fallback: {e}")
+                async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                    for cand in candidates:
+                        resp = await client.get("https://www.tagesschau.de/api2u/search/", params={"searchText": cand, "pageSize": 20})
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            items = data.get("searchResults", []) or data.get("news", [])
+                            for item in items:
+                                t = item.get("title", "")
+                                if not t:
+                                    continue
+                                l = item.get("detailsweb") or item.get("shareURL") or item.get("url") or ""
+                                h = hashlib.md5(f"{t}{l}".encode()).hexdigest()
+                                p = item.get("date") or item.get("sophoraCreated") or datetime.now(UTC).strftime("%Y-%m-%d")
+                                scraped_articles.append({
+                                    "hash": h,
+                                    "title": t,
+                                    "link": l,
+                                    "summary": item.get("teaserText") or t,
+                                    "content": item.get("teaserText") or t,
+                                    "published_date": p[:10],
+                                    "category": "Tagesschau Presseecho",
+                                    "source_type": "press",
+                                    "sentiment_score": 50,
+                                    "sentiment_label": "Neutral",
+                                    "sentiment_rationale": "Tagesschau Presseecho",
+                                    "key_topics": ["Tagesschau"]
+                                })
+                            if scraped_articles:
+                                break
+            except Exception as ex:
+                logger.error(f"Direct Tagesschau API query exception: {ex}")
 
     # Step 3: Clear old entries for company and persist new entries to DB
     old_entries_res = await db.execute(select(CompanyNewsEntry).where(CompanyNewsEntry.company_id == company_id))
