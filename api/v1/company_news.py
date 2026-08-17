@@ -87,7 +87,6 @@ async def run_deep_research_company_news(company_name: str, newsroom_urls: list[
                 data_field = body.get("data", {})
                 if isinstance(data_field, dict) and ("press_news" in data_field or "company_blog" in data_field):
                     return data_field
-                raw_out = data_field.get("raw_output") if isinstance(data_field, dict) else body.get("raw_output")
                 if isinstance(raw_out, str):
                     import json
                     cleaned = raw_out.strip()
@@ -95,11 +94,17 @@ async def run_deep_research_company_news(company_name: str, newsroom_urls: list[
                         cleaned = cleaned.split("```json", 1)[1].split("```", 1)[0].strip()
                     elif cleaned.startswith("```"):
                         cleaned = cleaned.split("```", 1)[1].split("```", 1)[0].strip()
-                    return json.loads(cleaned)
+                    try:
+                        return json.loads(cleaned)
+                    except json.JSONDecodeError as ex:
+                        logger.error(f"❌ JSON parsing failure: Deep Research output for '{company_name}' could not be parsed: {ex}. Raw snippet: {cleaned[:300]}")
+                        return {}
                 if isinstance(raw_out, dict):
                     return raw_out
+            else:
+                logger.error(f"❌ AI Connector HTTP {res.status_code} for '{company_name}': {res.text[:300]}")
     except Exception as e:
-        logger.warning(f"Deep Research call for {company_name} failed: {e}")
+        logger.warning(f"Deep Research call exception for {company_name}: {e}")
     return {}
 
 
@@ -162,6 +167,20 @@ async def scrape_company_news(company_id: str, db: AsyncSession = Depends(get_db
     deep_res = await run_deep_research_company_news(company_id)
     press_items = deep_res.get("press_news") or []
     blog_items = deep_res.get("company_blog") or []
+    total_count = len(press_items) + len(blog_items)
+
+    if total_count == 0:
+        logger.warning(f"⚠️ Zero results warning: Deep Research returned 0 news items for company '{company_id}'")
+    elif total_count < 20:
+        logger.warning(
+            f"⚠️ Low results warning: Deep Research returned only {total_count} total items for company '{company_id}' "
+            f"(expected >= 20 items: press={len(press_items)}, blog={len(blog_items)})"
+        )
+    else:
+        logger.info(
+            f"✅ Deep Research success for company '{company_id}': extracted {total_count} total items "
+            f"(press={len(press_items)}, blog={len(blog_items)})"
+        )
 
     scraped_articles = []
     for item in press_items:
