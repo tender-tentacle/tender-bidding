@@ -114,8 +114,7 @@ def normalize_news_date(val: str | None) -> str:
 async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
     """
     Get company news for a given company.
-    Checks master data for custom newsroom/blog portal links, crawls them via crawling MS,
-    and falls back to Tagesschau if no portal links exist or return zero results.
+    Calls AI Connector Deep Research for press & corporate blog synthesis, falling back to Tagesschau if offline.
     """
     from urllib.parse import unquote
     company_id = unquote(company_id)
@@ -136,173 +135,21 @@ async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
         logger.info(f"Returning cached news for {company_id}")
         return news_entries
 
-    crawling_url = os.getenv("CRAWLING_URL", "http://tender-crawling:8001")
-    distributing_url = os.getenv("DISTRIBUTING_URL", "http://tender-distributing:8005")
-
-    # Step 1: Discover newsroom and blog links from master-data
-    target_newsroom_urls = []
-    company_name = company_id
-
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            md_res = await client.get(f"{distributing_url}/api/master-data")
-            if md_res.status_code == 200:
-                md_data = md_res.json()
-                target_companies = md_data.get("target_companies", [])
-                for comp in target_companies:
-                    if comp.get("id") == company_id or comp.get("name", "").lower() == company_id.lower():
-                        company_name = comp.get("name", company_id)
-                        pl = comp.get("portal_links") or {}
-
-                        # Extract list arrays or string fallbacks
-                        def _extract_url_list(val):
-                            if not val:
-                                return []
-                            if isinstance(val, list):
-                                return [str(u).strip() for u in val if isinstance(u, str) and u.strip()]
-                            if isinstance(val, str) and val.strip():
-                                return [val.strip()]
-                            return []
-
-                        newsroom_list = _extract_url_list(pl.get("newsroom")) or _extract_url_list(
-                            pl.get("newsroom_url")
-                        )
-                        blog_list = _extract_url_list(pl.get("blog")) or _extract_url_list(pl.get("blog_url"))
-
-                        target_newsroom_urls.extend(newsroom_list)
-                        target_newsroom_urls.extend(blog_list)
-                        break
-    except Exception as e:
-        logger.warning(f"Could not fetch master data portal links for {company_id}: {e}")
-
-    scraped_articles = []
-
-    # Step 2: Crawl DuckDuckGo News for target company/buyer
-    from core.utils import clean_company_name_candidates
-    candidates = clean_company_name_candidates(company_name)
-    primary_query = candidates[0] if candidates else company_name
-
-    logger.info(f"Triggering DuckDuckGo News scraper for {primary_query} (raw: {company_name})")
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            res = await client.post(f"{crawling_url}/api/v1/scrape/news", json={"query": primary_query}, timeout=25.0)
-            if res.status_code == 200:
-                scraped_articles.extend(res.json())
-    except Exception as e:
-        logger.warning(f"Failed to fetch DuckDuckGo news for {primary_query}: {e}")
-
-    # Step 3: Crawl custom or DDG-discovered newsroom/blog URLs
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        if target_newsroom_urls:
-            for url in target_newsroom_urls:
-                try:
-                    logger.info(f"Crawling master-data newsroom URL for {company_name}: {url}")
-                    res = await client.post(
-                        f"{crawling_url}/api/v1/scrape/newsroom",
-                        json={"url": url, "company_name": primary_query},
-                        timeout=25.0,
-                    )
-                    if res.status_code == 200:
-                        for nr_item in res.json():
-                            nr_item["source_type"] = "company_blog"
-                            nr_item["category"] = "Corporate Newsroom & Blog"
-                            scraped_articles.append(nr_item)
-                except Exception as e:
-                    logger.warning(f"Failed to crawl newsroom URL {url}: {e}")
-        else:
-            try:
-                logger.info(f"Triggering DuckDuckGo newsroom discovery for {primary_query}")
-                res = await client.post(
-                    f"{crawling_url}/api/v1/scrape/newsroom", json={"company_name": primary_query}, timeout=25.0
-                )
-                if res.status_code == 200:
-                    for nr_item in res.json():
-                        nr_item["source_type"] = "company_blog"
-                        nr_item["category"] = "Corporate Newsroom & Blog"
-                        scraped_articles.append(nr_item)
-            except Exception as e:
-                logger.warning(f"Failed to discover/crawl newsrooms for {primary_query}: {e}")
-
-    # Step 4: Fallback to Tagesschau search if no articles found so far
-    if not scraped_articles:
-        logger.info(f"Fallback: Triggering Tagesschau scraper for {company_name} (candidates: {candidates})")
-        for cand in candidates:
-            try:
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    res = await client.post(
-                        f"{crawling_url}/api/v1/scrape/tagesschau", json={"query": cand}, timeout=25.0
-                    )
-                    if res.status_code == 200 and res.json():
-                        scraped_articles.extend(res.json())
-                        break
-            except Exception as e:
-                logger.error(f"Failed to connect to crawling service for Tagesschau fallback: {e}")
-
-    if not scraped_articles:
-        logger.info(f"No news articles found for {company_id}")
-        return news_entries
-
-    # Step 5: Deduplicate, normalize dates, filter to last 730 days (2 years), and sort descending
-    cutoff_date = (datetime.now(UTC) - timedelta(days=730)).strftime("%Y-%m-%d")
-    seen_hashes = set()
-    filtered_articles = []
-
-    for item in scraped_articles:
-        article_hash = item.get("hash") or item.get("link")
-        if not article_hash or article_hash in seen_hashes:
-            continue
-        seen_hashes.add(article_hash)
-
-        raw_pub = item.get("published_at") or item.get("published_date") or datetime.now(UTC).strftime("%Y-%m-%d")
-        pub_date = normalize_news_date(raw_pub)
-
-        if pub_date >= cutoff_date or len(pub_date) < 10:
-            item["_pub_date"] = pub_date
-            filtered_articles.append(item)
-
-    filtered_articles.sort(key=lambda x: x.get("_pub_date", ""), reverse=True)
-
-    # Step 6: Clear old entries and save new ones
-    try:
-        for old_entry in news_entries:
-            await db.delete(old_entry)
-
-        new_entries = []
-        for item in filtered_articles:
-            entry = CompanyNewsEntry(
-                company_id=company_id,
-                hash=item.get("hash", ""),
-                title=item.get("title", ""),
-                link=item.get("link", ""),
-                content=item.get("content", ""),
-                category=item.get("category", "DuckDuckGo News"),
-                published_date=item.get("_pub_date", ""),
-                crawled_date=datetime.now(UTC).replace(tzinfo=None),
-            )
-            db.add(entry)
-            new_entries.append(entry)
-
-        await db.commit()
-        for e in new_entries:
-            await db.refresh(e)
-
-        return new_entries
-
-    except Exception as e:
-        logger.error(f"Error updating company news DB: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+    return await scrape_company_news(company_id=company_id, db=db)
 
 
 @router.post("/company/{company_id}/news/scrape", response_model=list[CompanyNewsEntrySchema])
 async def scrape_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
     """
-    Force re-scrape company news and execute Deep Research for press news & corporate blog/newsroom.
+    Execute AI Connector Deep Research (model_tier='deep-research') for company press news & corporate blog.
+    Saves results directly to database and returns structured JSON news elements.
     """
     from urllib.parse import unquote
     company_id = unquote(company_id)
     crawling_url = os.getenv("CRAWLING_URL", "http://tender-crawling:8001")
 
-    # Step 1: Execute Deep Research for Press & Company Blog
+    # Step 1: Execute Deep Research via AI Connector
+    logger.info(f"Triggering AI Connector Deep Research for company news: '{company_id}'")
     deep_res = await run_deep_research_company_news(company_id)
     press_items = deep_res.get("press_news") or []
     blog_items = deep_res.get("company_blog") or []
@@ -318,10 +165,11 @@ async def scrape_company_news(company_id: str, db: AsyncSession = Depends(get_db
         item["category"] = "Corporate Blog & Newsroom (Deep Research)"
         scraped_articles.append(item)
 
-    # Step 2: Fallback to Tagesschau scraper if zero items from Deep Research
+    # Step 2: Fallback to Tagesschau scraper ONLY if zero items from Deep Research
     if not scraped_articles:
         from core.utils import clean_company_name_candidates
         candidates = clean_company_name_candidates(company_id)
+        logger.info(f"Fallback: Triggering Tagesschau API for '{company_id}' (candidates: {candidates})")
 
         for cand in candidates:
             try:
@@ -335,15 +183,17 @@ async def scrape_company_news(company_id: str, db: AsyncSession = Depends(get_db
                             scraped_articles.append(it)
                         break
             except Exception as e:
-                logger.error(f"Failed to connect to crawling service for Tagesschau scrape: {e}")
+                logger.error(f"Failed to connect to crawling service for Tagesschau fallback: {e}")
 
-    # Step 3: Clear old entries for company and persist new entries
+    # Step 3: Clear old entries for company and persist new entries to DB
     old_entries_res = await db.execute(select(CompanyNewsEntry).where(CompanyNewsEntry.company_id == company_id))
     for old in old_entries_res.scalars().all():
         await db.delete(old)
 
+    cutoff_date = (datetime.now(UTC) - timedelta(days=730)).strftime("%Y-%m-%d")
     seen_hashes = set()
     new_entries = []
+
     for item in scraped_articles:
         article_hash = item.get("hash") or item.get("link") or item.get("title")
         if not article_hash or article_hash in seen_hashes:
@@ -352,24 +202,26 @@ async def scrape_company_news(company_id: str, db: AsyncSession = Depends(get_db
 
         raw_pub = item.get("published_at") or item.get("published_date") or datetime.now(UTC).strftime("%Y-%m-%d")
         pub_date = normalize_news_date(raw_pub)
-        entry = CompanyNewsEntry(
-            company_id=company_id,
-            hash=str(article_hash),
-            title=item.get("title", ""),
-            link=item.get("link", ""),
-            content=item.get("content") or item.get("summary") or "",
-            summary=item.get("summary"),
-            category=item.get("category", "Unternehmens-News"),
-            source_type=item.get("source_type", "press"),
-            published_date=pub_date,
-            crawled_date=datetime.now(UTC).replace(tzinfo=None),
-            sentiment_score=item.get("sentiment_score"),
-            sentiment_label=item.get("sentiment_label"),
-            sentiment_rationale=item.get("sentiment_rationale"),
-            key_topics=item.get("key_topics"),
-        )
-        db.add(entry)
-        new_entries.append(entry)
+
+        if pub_date >= cutoff_date or len(pub_date) < 10:
+            entry = CompanyNewsEntry(
+                company_id=company_id,
+                hash=str(article_hash),
+                title=item.get("title", ""),
+                link=item.get("link", ""),
+                content=item.get("content") or item.get("summary") or "",
+                summary=item.get("summary"),
+                category=item.get("category", "Unternehmens-News"),
+                source_type=item.get("source_type", "press"),
+                published_date=pub_date,
+                crawled_date=datetime.now(UTC).replace(tzinfo=None),
+                sentiment_score=item.get("sentiment_score"),
+                sentiment_label=item.get("sentiment_label"),
+                sentiment_rationale=item.get("sentiment_rationale"),
+                key_topics=item.get("key_topics"),
+            )
+            db.add(entry)
+            new_entries.append(entry)
 
     try:
         await db.commit()
