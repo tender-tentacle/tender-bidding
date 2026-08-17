@@ -94,6 +94,22 @@ async def run_deep_research_company_news(company_name: str, newsroom_urls: list[
     return {}
 
 
+def normalize_news_date(val: str | None) -> str:
+    if not val or not str(val).strip():
+        return datetime.now(UTC).strftime("%Y-%m-%d")
+    s = str(val).strip()
+    import re
+    m_de = re.match(r"^(\d{1,2})\.(\d{1,2})\.(\d{4})", s)
+    if m_de:
+        day, month, year = m_de.groups()
+        return f"{year}-{int(month):02d}-{int(day):02d}"
+    m_iso = re.search(r"\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b", s)
+    if m_iso:
+        year, month, day = m_iso.groups()
+        return f"{year}-{int(month):02d}-{int(day):02d}"
+    return s[:10]
+
+
 @router.get("/company/{company_id}/news", response_model=list[CompanyNewsEntrySchema])
 async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
     """
@@ -220,8 +236,8 @@ async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
         logger.info(f"No news articles found for {company_id}")
         return news_entries
 
-    # Step 5: Deduplicate, filter to last 30 days (Tagesschau & News scan), and sort by published date descending
-    cutoff_date = (datetime.now(UTC) - timedelta(days=30)).strftime("%Y-%m-%d")
+    # Step 5: Deduplicate, normalize dates, filter to last 730 days (2 years), and sort descending
+    cutoff_date = (datetime.now(UTC) - timedelta(days=730)).strftime("%Y-%m-%d")
     seen_hashes = set()
     filtered_articles = []
 
@@ -231,8 +247,10 @@ async def get_company_news(company_id: str, db: AsyncSession = Depends(get_db)):
             continue
         seen_hashes.add(article_hash)
 
-        pub_date = item.get("published_at") or item.get("published_date") or datetime.now(UTC).strftime("%Y-%m-%d")
-        if pub_date >= cutoff_date:
+        raw_pub = item.get("published_at") or item.get("published_date") or datetime.now(UTC).strftime("%Y-%m-%d")
+        pub_date = normalize_news_date(raw_pub)
+
+        if pub_date >= cutoff_date or len(pub_date) < 10:
             item["_pub_date"] = pub_date
             filtered_articles.append(item)
 
@@ -326,7 +344,8 @@ async def scrape_company_news(company_id: str, db: AsyncSession = Depends(get_db
             continue
         seen_hashes.add(article_hash)
 
-        pub_date = item.get("published_at") or item.get("published_date") or datetime.now(UTC).strftime("%Y-%m-%d")
+        raw_pub = item.get("published_at") or item.get("published_date") or datetime.now(UTC).strftime("%Y-%m-%d")
+        pub_date = normalize_news_date(raw_pub)
         entry = CompanyNewsEntry(
             company_id=company_id,
             hash=str(article_hash),
