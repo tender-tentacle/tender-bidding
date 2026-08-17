@@ -204,63 +204,65 @@ async def scrape_company_news(company_id: str, db: AsyncSession = Depends(get_db
         item["category"] = "Corporate Blog & Newsroom (Deep Research)"
         scraped_articles.append(item)
 
-    # Step 2: Fallback to Tagesschau scraper ONLY if zero items from Deep Research
-    if not scraped_articles:
-        from core.utils import clean_company_name_candidates
-        candidates = clean_company_name_candidates(company_id)
-        logger.info(f"Fallback: Triggering Tagesschau API for '{company_id}' (candidates: {candidates})")
+    # Step 2: Query Tagesschau API to guarantee Tagesschau press articles are included
+    tagesschau_articles = []
+    from core.utils import clean_company_name_candidates
+    candidates = clean_company_name_candidates(company_id)
+    logger.info(f"Triggering Tagesschau API for '{company_id}' (candidates: {candidates})")
 
-        # Try crawling microservice candidate URLs first
-        for cand in candidates:
-            for ep_url in unique_crawling_urls:
-                try:
-                    async with httpx.AsyncClient(timeout=15.0) as client:
-                        res = await client.post(ep_url, json={"query": cand})
-                        if res.status_code == 200 and res.json():
-                            for it in res.json():
-                                it["source_type"] = "press"
-                                it["category"] = it.get("category") or "Tagesschau Presseecho"
-                                scraped_articles.append(it)
-                            break
-                except Exception as e:
-                    logger.debug(f"Crawling service Tagesschau fallback failed for {ep_url}: {e}")
-            if scraped_articles:
-                break
-
-        # If crawling microservice was unreachable, query Tagesschau open API directly from bidding MS
-        if not scraped_articles:
+    # Try crawling microservice candidate URLs first
+    for cand in candidates:
+        for ep_url in unique_crawling_urls:
             try:
-                async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-                    for cand in candidates:
-                        resp = await client.get("https://www.tagesschau.de/api2u/search/", params={"searchText": cand, "pageSize": 20})
-                        if resp.status_code == 200:
-                            data = resp.json()
-                            items = data.get("searchResults", []) or data.get("news", [])
-                            for item in items:
-                                t = item.get("title", "")
-                                if not t:
-                                    continue
-                                l = item.get("detailsweb") or item.get("shareURL") or item.get("url") or ""
-                                h = hashlib.md5(f"{t}{l}".encode()).hexdigest()
-                                p = item.get("date") or item.get("sophoraCreated") or datetime.now(UTC).strftime("%Y-%m-%d")
-                                scraped_articles.append({
-                                    "hash": h,
-                                    "title": t,
-                                    "link": l,
-                                    "summary": item.get("teaserText") or t,
-                                    "content": item.get("teaserText") or t,
-                                    "published_date": p[:10],
-                                    "category": "Tagesschau Presseecho",
-                                    "source_type": "press",
-                                    "sentiment_score": 50,
-                                    "sentiment_label": "Neutral",
-                                    "sentiment_rationale": "Tagesschau Presseecho",
-                                    "key_topics": ["Tagesschau"]
-                                })
-                            if scraped_articles:
-                                break
-            except Exception as ex:
-                logger.error(f"Direct Tagesschau API query exception: {ex}")
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    res = await client.post(ep_url, json={"query": cand})
+                    if res.status_code == 200 and res.json():
+                        for it in res.json():
+                            it["source_type"] = "press"
+                            it["category"] = it.get("category") or "Tagesschau Presseecho"
+                            tagesschau_articles.append(it)
+                        break
+            except Exception as e:
+                logger.debug(f"Crawling service Tagesschau fallback failed for {ep_url}: {e}")
+        if tagesschau_articles:
+            break
+
+    # If crawling microservice was unreachable, query Tagesschau open API directly from bidding MS
+    if not tagesschau_articles:
+        try:
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                for cand in candidates:
+                    resp = await client.get("https://www.tagesschau.de/api2u/search/", params={"searchText": cand, "pageSize": 20})
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        items = data.get("searchResults", []) or data.get("news", [])
+                        for item in items:
+                            t = item.get("title", "")
+                            if not t:
+                                continue
+                            l = item.get("detailsweb") or item.get("shareURL") or item.get("url") or ""
+                            h = hashlib.md5(f"{t}{l}".encode()).hexdigest()
+                            p = item.get("date") or item.get("sophoraCreated") or datetime.now(UTC).strftime("%Y-%m-%d")
+                            tagesschau_articles.append({
+                                "hash": h,
+                                "title": t,
+                                "link": l,
+                                "summary": item.get("teaserText") or t,
+                                "content": item.get("teaserText") or t,
+                                "published_date": p[:10],
+                                "category": "Tagesschau Presseecho",
+                                "source_type": "press",
+                                "sentiment_score": 50,
+                                "sentiment_label": "Neutral",
+                                "sentiment_rationale": "Tagesschau Presseecho",
+                                "key_topics": ["Tagesschau"]
+                            })
+                        if tagesschau_articles:
+                            break
+        except Exception as ex:
+            logger.error(f"Direct Tagesschau API query exception: {ex}")
+
+    scraped_articles.extend(tagesschau_articles)
 
     # Step 3: Clear old entries for company and persist new entries to DB
     old_entries_res = await db.execute(select(CompanyNewsEntry).where(CompanyNewsEntry.company_id == company_id))
