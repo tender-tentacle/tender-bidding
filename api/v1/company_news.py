@@ -46,9 +46,10 @@ async def run_deep_research_company_news(company_name: str, newsroom_urls: list[
             f"Official newsroom/blog URLs: {newsroom_urls or []}. "
             "CRITICAL INSTRUCTIONS:\n"
             "1. Time Window: Extract news, press releases, and blog posts published within the LAST 2 YEARS (730 days).\n"
-            "2. Quantity Target: Extract between 20 to 100 distinct items for 'press_news' (external media & press coverage) "
-            "and between 20 to 100 distinct items for 'company_blog' (official corporate newsroom and blog articles).\n"
-            "3. Formatting: Do NOT summarize portal pages as single entries. Extract EACH individual article with its distinct title, link, 2-3 sentence summary, publication date (YYYY-MM-DD), sentiment_score (0-100), sentiment_label, sentiment_rationale, and key_topics."
+            "2. Quantity Target: Extract AT LEAST 20 items (and up to 100 max) for 'press_news' (external media & press coverage) "
+            "and AT LEAST 20 items (and up to 100 max) for 'company_blog' (official corporate newsroom and blog articles).\n"
+            "3. Summary Requirement: 'summary' MUST contain the first 200 words of the article text or a detailed executive summary of the article content. NEVER output a URL, domain name, or empty string in 'summary'.\n"
+            "4. Formatting: Extract EACH individual article with its distinct title, link, 200-word summary, publication date (YYYY-MM-DD), sentiment_score (0-100), sentiment_label, sentiment_rationale, and key_topics."
         ),
         "model_tier": "deep-research",
         "output_structure": {
@@ -56,7 +57,7 @@ async def run_deep_research_company_news(company_name: str, newsroom_urls: list[
                 {
                     "title": "Headline",
                     "link": "https://...",
-                    "summary": "2-sentence summary of news item",
+                    "summary": "First 200 words of the news article content",
                     "published_date": "YYYY-MM-DD",
                     "sentiment_score": 75,
                     "sentiment_label": "Positive",
