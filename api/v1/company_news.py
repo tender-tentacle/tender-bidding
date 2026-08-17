@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 from core.database import get_db
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from models.bid import CompanyNewsEntry
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -239,3 +239,25 @@ async def scrape_company_news(company_id: str, db: AsyncSession = Depends(get_db
         logger.warning(f"Save scraped news commit warning: {e}")
 
     return new_entries
+
+
+@router.post("/company/{company_id}/news/refresh")
+async def refresh_company_news_background(company_id: str, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    """
+    Triggers an asynchronous background Deep Research refresh for company news without blocking the HTTP caller.
+    """
+    from urllib.parse import unquote
+    company_id = unquote(company_id)
+
+    async def _bg_worker(c_id: str):
+        from core.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as session:
+            try:
+                logger.info(f"Starting background Deep Research refresh for '{c_id}'")
+                await scrape_company_news(company_id=c_id, db=session)
+                logger.info(f"Completed background Deep Research refresh for '{c_id}'")
+            except Exception as ex:
+                logger.error(f"Background Deep Research refresh error for '{c_id}': {ex}")
+
+    background_tasks.add_task(_bg_worker, company_id)
+    return {"status": "queued", "company_id": company_id, "message": "Deep research background refresh task queued"}
