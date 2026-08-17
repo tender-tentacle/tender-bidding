@@ -37,7 +37,13 @@ async def test_company_mood_persists_and_returns_salary_fields():
     res3 = MagicMock()
     res3.scalars.return_value.all.return_value = [new_mood]
 
-    mock_db.execute.side_effect = [res1, res2, res3]
+    def mock_execute_impl(stmt, *args, **kwargs):
+        m = MagicMock()
+        m.scalars.return_value.all.return_value = [new_mood]
+        m.scalars.return_value.first.return_value = None
+        return m
+
+    mock_db.execute.side_effect = mock_execute_impl
 
     mock_crawling_resp = MagicMock()
     mock_crawling_resp.status_code = 200

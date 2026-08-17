@@ -52,6 +52,7 @@ async def run_deep_research_company_news(company_name: str, newsroom_urls: list[
             "4. Formatting: Extract EACH individual article with its distinct title, link, 200-word summary, publication date (YYYY-MM-DD), sentiment_score (0-100), sentiment_label, sentiment_rationale, and key_topics."
         ),
         "model_tier": "deep-research",
+        "enable_web_tools": True,
         "output_structure": {
             "press_news": [
                 {
@@ -87,6 +88,7 @@ async def run_deep_research_company_news(company_name: str, newsroom_urls: list[
                 data_field = body.get("data", {})
                 if isinstance(data_field, dict) and ("press_news" in data_field or "company_blog" in data_field):
                     return data_field
+                raw_out = data_field.get("raw_output") if isinstance(data_field, dict) else body.get("raw_output")
                 if isinstance(raw_out, str):
                     import json
                     cleaned = raw_out.strip()

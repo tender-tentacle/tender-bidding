@@ -212,7 +212,10 @@ async def manual_scrape_company_mood(company_id: str, request: ScrapeMoodRequest
     from urllib.parse import unquote
     company_id = unquote(company_id)
 
-    is_glassdoor = "glassdoor" in (request.url or "").lower() or "glassdoor" in company_id.lower()
+    raw_url = (request.url or "").strip().lower()
+    if not raw_url or not ("kununu.com" in raw_url or "glassdoor" in raw_url):
+        raise HTTPException(status_code=400, detail="A valid Kununu or Glassdoor URL is required.")
+    is_glassdoor = "glassdoor" in raw_url or "glassdoor" in company_id.lower()
     cleaned_url = clean_glassdoor_url(request.url) if is_glassdoor else clean_kununu_url(request.url)
 
     if not cleaned_url:
