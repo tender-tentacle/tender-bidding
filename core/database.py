@@ -162,6 +162,8 @@ async def init_db() -> None:
                 ("is_valid_profile", "BOOLEAN"),
                 ("no_profile_found", "BOOLEAN"),
                 ("no_profile_reason", "TEXT"),
+                ("verification_confidence", "FLOAT"),
+                ("verification_reason", "VARCHAR(500)"),
             ]:
                 if col not in existing_cols:
                     await conn.execute(text(f"ALTER TABLE bid_company_northdata ADD COLUMN {col} {col_type}"))
@@ -344,6 +346,18 @@ async def init_db() -> None:
             END
             """
             await conn.execute(text(check_sql_company_mood))
+
+            for col, col_type in [
+                ("verification_confidence", "FLOAT"),
+                ("verification_reason", "NVARCHAR(500)"),
+            ]:
+                check_sql_nd = f"""
+                IF COL_LENGTH('bid_company_northdata', '{col}') IS NULL
+                BEGIN
+                    ALTER TABLE bid_company_northdata ADD {col} {col_type} NULL
+                END
+                """
+                await conn.execute(text(check_sql_nd))
 
             check_sql_company_register = """
             IF OBJECT_ID('bid_company_register_entry', 'U') IS NULL

@@ -125,6 +125,7 @@ async def get_bid_by_source(source_ref: str, db: Annotated[AsyncSession, Depends
                 selectinload(Bid.key_dates),
             )
             .where((Bid.id == source_ref) | (Bid.source_ref == source_ref) | (Bid.enriching_id == source_ref))
+            .order_by(Bid.version.desc(), Bid.created_at.desc())
         )
     ).scalars().first()
 
@@ -493,11 +494,6 @@ def _resolve_attachment_links(source_doc_name: str | None, attachments: list) ->
                     link_parsed_doc = att.get("url")
                     break
 
-        # Fallback mockup URL for visual completeness in mock/test mode
-        if not link_original_doc:
-            link_original_doc = f"/ms/dashboard/mock-documents/{source_doc_name}"
-            link_parsed_doc = f"/ms/dashboard/mock-documents/{source_doc_name}?parsed=true"
-
     return link_original_doc, link_parsed_doc
 
 
@@ -625,6 +621,10 @@ async def enrich_bid_requirements(
 
     # 2. Idempotently find/create Bid workspace
     bid = await get_by_source_ref(db, source_ref)
+    if not bid and source_id != source_ref:
+        bid = await get_by_source_ref(db, source_id)
+        if bid:
+            bid.source_ref = source_ref
     if not bid:
         snapshot = {
             "source_ref": source_ref,

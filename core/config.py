@@ -36,3 +36,5 @@ ALLOWED_ORIGINS: str = os.getenv("ALLOWED_ORIGINS", "http://localhost:8009")
 
 DISTRIBUTION_MS_URL: str = os.getenv("DISTRIBUTION_URL", "http://distributing:8005")
 CRAWLING_MS_URL: str = os.getenv("CRAWLING_URL", "http://tender-crawling:8001")
+MARKET_RESEARCH_MS_URL: str = os.getenv("MARKET_RESEARCH_URL", "http://tender-market-research:8015")
+

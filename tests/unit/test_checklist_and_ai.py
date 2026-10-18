@@ -85,11 +85,11 @@ async def test_real_ai_client_raises_on_failure(mocker):
 
     docs = await client.extract_required_documents({"source_ref": "test"})
     assert isinstance(docs, list)
-    assert len(docs) > 0
+    assert docs == []
 
     deadlines = await client.extract_bidding_deadlines({"source_ref": "test"})
     assert isinstance(deadlines, list)
-    assert len(deadlines) > 0
+    assert deadlines == []
 
 
 @pytest.mark.asyncio
@@ -105,8 +105,8 @@ async def test_real_ai_client_raises_on_httpx_exception(mocker):
 
     docs = await client.extract_required_documents({"source_ref": "test"})
     assert isinstance(docs, list)
-    assert len(docs) > 0
+    assert docs == []
 
     deadlines = await client.extract_bidding_deadlines({"source_ref": "test"})
     assert isinstance(deadlines, list)
-    assert len(deadlines) > 0
+    assert deadlines == []

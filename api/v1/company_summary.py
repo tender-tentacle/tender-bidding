@@ -466,7 +466,7 @@ def calculate_scarf_monthly_timeline(moods: list[Any]) -> list[dict]:
 
 
 async def score_articles_with_ai(articles: list[dict], company_name: str = "", db: AsyncSession | None = None) -> list[dict]:
-    ai_url = os.getenv("AI_SERVICE_URL", "http://artificial-intelligence-connector:8004")
+    ai_url = os.getenv("AI_URL", "http://ai:8004")
     prompt_template = None
     if db is not None:
         try:

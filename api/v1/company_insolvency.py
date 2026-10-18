@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["company-insolvency"])
 
-CRAWLING_MS_URL = os.getenv("CRAWLING_MS_URL", "http://tender-tentacle-tender-crawling-1:8001")
+CRAWLING_MS_URL = os.getenv("CRAWLING_URL", "http://tender-crawling:8001")
 
 
 class CompanyInsolvencySchema(BaseModel):

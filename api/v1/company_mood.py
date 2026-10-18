@@ -2,10 +2,11 @@ import hashlib
 import logging
 import os
 import re
+import uuid
 from datetime import UTC, datetime
 
 import httpx
-from core.config import AI_URL, DISTRIBUTION_MS_URL
+from core.config import AI_URL, DISTRIBUTION_MS_URL, MARKET_RESEARCH_MS_URL
 from core.database import get_db
 from fastapi import APIRouter, Depends, HTTPException
 from models.bid import CompanyJobEntry, CompanyMood, CompanySalaryEntry
@@ -42,14 +43,14 @@ class CompanyJobSchema(BaseModel):
 
 
 class CompanyMoodSchema(BaseModel):
-    id: str
+    id: str | int
     company_id: str
     comment_hash: str
     title: str | None
     content: str | None
     rating: float | None
     published_date: str | None
-    crawled_date: datetime
+    crawled_date: datetime | None = None
     overall_score: float | None = None
     score_career: float | None = None
     score_culture: float | None = None
@@ -132,11 +133,131 @@ async def get_company_kununu_jobs(company_id: str, db: AsyncSession = Depends(ge
     return result.scalars().all()
 
 
+async def auto_sync_moods_from_market_research(company_id: str, db: AsyncSession) -> list[CompanyMood]:
+    """Auto-syncs existing employee reviews from tender-market-research when bidding has no records."""
+    import urllib.parse
+
+    encoded_name = urllib.parse.quote(company_id)
+    target_url = f"{MARKET_RESEARCH_MS_URL}/api/v1/companies/by-name/{encoded_name}/kununu"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(target_url)
+            if resp.status_code != 200:
+                logger.info(f"Could not fetch kununu data for {company_id} from market-research: HTTP {resp.status_code}")
+                return []
+            data = resp.json()
+    except Exception as e:
+        logger.warning(f"Error calling market-research kununu endpoint for {company_id}: {e}")
+        return []
+
+    created_moods = []
+    now_utc = datetime.now(UTC)
+
+    # Process Kununu reviews
+    kununu_data = data.get("kununu", {}) if isinstance(data, dict) else {}
+    kununu_comments = (
+        kununu_data.get("comments")
+        or kununu_data.get("employee_moods")
+        or kununu_data.get("reviews")
+        or []
+    )
+    kununu_meta = kununu_data.get("metadata", {}) or {}
+    kununu_overall = kununu_meta.get("overall_score")
+    kununu_count = kununu_meta.get("review_count") or len(kununu_comments)
+
+    for idx, c in enumerate(kununu_comments):
+        if not isinstance(c, dict):
+            continue
+        title = c.get("title") or f"Kununu Bewertung {idx + 1}"
+        pros = c.get("pros") or ""
+        cons = c.get("cons") or ""
+        content_parts = []
+        if pros:
+            content_parts.append(f"Vorteile: {pros}")
+        if cons:
+            content_parts.append(f"Nachteile: {cons}")
+        content = c.get("content") or "\n".join(content_parts) or title
+        rating = float(c.get("rating") or kununu_overall or 3.0)
+        pub_date = c.get("published_date") or c.get("date") or now_utc.strftime("%Y-%m-%d")
+
+        c_hash = hashlib.sha256(f"{company_id}|kununu|{title}|{content}|{idx}".encode()).hexdigest()[:64]
+        existing = await db.execute(select(CompanyMood).where(CompanyMood.comment_hash == c_hash))
+        if existing.scalars().first():
+            continue
+
+        mood = CompanyMood(
+            id=str(uuid.uuid4()),
+            company_id=company_id,
+            comment_hash=c_hash,
+            title=title,
+            content=content,
+            rating=rating,
+            published_date=pub_date,
+            crawled_date=now_utc,
+            overall_score=kununu_overall,
+            review_count=kununu_count,
+            source_platform="kununu",
+        )
+        db.add(mood)
+        created_moods.append(mood)
+
+    # Process Glassdoor reviews if present
+    gd_data = data.get("glassdoor", {}) if isinstance(data, dict) else {}
+    gd_comments = gd_data.get("comments") or gd_data.get("reviews") or []
+    gd_meta = gd_data.get("metadata", {}) or {}
+    gd_overall = gd_meta.get("overall_score")
+    gd_count = gd_meta.get("review_count") or len(gd_comments)
+
+    for idx, c in enumerate(gd_comments):
+        if not isinstance(c, dict):
+            continue
+        title = c.get("title") or f"Glassdoor Bewertung {idx + 1}"
+        pros = c.get("pros") or ""
+        cons = c.get("cons") or ""
+        content_parts = []
+        if pros:
+            content_parts.append(f"Pros: {pros}")
+        if cons:
+            content_parts.append(f"Cons: {cons}")
+        content = c.get("content") or "\n".join(content_parts) or title
+        rating = float(c.get("rating") or gd_overall or 3.0)
+        pub_date = c.get("published_date") or c.get("date") or now_utc.strftime("%Y-%m-%d")
+
+        c_hash = hashlib.sha256(f"{company_id}|glassdoor|{title}|{content}|{idx}".encode()).hexdigest()[:64]
+        existing = await db.execute(select(CompanyMood).where(CompanyMood.comment_hash == c_hash))
+        if existing.scalars().first():
+            continue
+
+        mood = CompanyMood(
+            id=str(uuid.uuid4()),
+            company_id=company_id,
+            comment_hash=c_hash,
+            title=title,
+            content=content,
+            rating=rating,
+            published_date=pub_date,
+            crawled_date=now_utc,
+            overall_score=gd_overall,
+            review_count=gd_count,
+            source_platform="glassdoor",
+        )
+        db.add(mood)
+        created_moods.append(mood)
+
+    if created_moods:
+        await db.commit()
+        for m in created_moods:
+            await db.refresh(m)
+
+    return created_moods
+
+
 @router.get("/company/{company_id}/mood", response_model=list[CompanyMoodSchema])
 async def get_company_mood(company_id: str, db: AsyncSession = Depends(get_db)):
     """
     Get cached employee mood reviews for a specific company.
     Returns cached DB records without triggering automatic live scraping or guessing URLs.
+    If no records exist in DB, auto-syncs from market-research.
     """
     from urllib.parse import unquote
     company_id = unquote(company_id)
@@ -149,7 +270,13 @@ async def get_company_mood(company_id: str, db: AsyncSession = Depends(get_db)):
         | (func.lower(CompanyMood.company_id).contains(short_id) if len(short_id) >= 3 else False)
     )
     result = await db.execute(stmt)
-    records = result.scalars().all()
+    records = list(result.scalars().all())
+
+    if not records:
+        synced = await auto_sync_moods_from_market_research(company_id, db)
+        if synced:
+            records = synced
+
     for r in records:
         if not r.source_platform:
             url_lower = (r.discovered_url or "").lower()
@@ -781,17 +908,21 @@ async def enrich_company_mood_scarf(
         | (func.lower(CompanyMood.company_id).contains(short_id) if len(short_id) >= 3 else False)
     )
     res = await db.execute(stmt)
-    moods = res.scalars().all()
+    moods = list(res.scalars().all())
 
     if not moods:
-        return {
-            "status": "no_comments",
-            "company_id": company_id,
-            "total_comments": 0,
-            "analyzed_count": 0,
-            "waiting_count": 0,
-            "moods": []
-        }
+        synced = await auto_sync_moods_from_market_research(company_id, db)
+        if synced:
+            moods = synced
+        else:
+            return {
+                "status": "no_comments",
+                "company_id": company_id,
+                "total_comments": 0,
+                "analyzed_count": 0,
+                "waiting_count": 0,
+                "moods": []
+            }
 
     # Call AI MS /api/v1/enrich/scarf or local extractor fallback
     comment_inputs = []
@@ -882,5 +1013,6 @@ async def enrich_company_mood_scarf(
         "total_comments": len(moods),
         "analyzed_count": len(moods),
         "waiting_count": 0,
-        "updated_count": updated_count
+        "updated_count": updated_count,
+        "moods": [CompanyMoodSchema.model_validate(m).model_dump(mode="json") for m in moods]
     }

@@ -9,15 +9,26 @@ from api.v1.company_news import fetch_official_newsroom_articles, scrape_company
 @pytest.mark.asyncio
 async def test_fetch_official_newsroom_articles_mhp():
     """Verify that official MHP newsroom articles are extracted from mhp.com newsroom URLs."""
-    articles = await fetch_official_newsroom_articles("MHP Management- und IT-Beratung GmbH")
-    assert isinstance(articles, list)
-    assert len(articles) > 0, "Expected official newsroom articles for MHP"
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.text = """
+    <html>
+        <body>
+            <a href="/en/insights/newsroom/news-detail/view/mhp-once-again-among-top-10">MHP once again among the Top 10 Leading IT Service Providers in Germany</a>
+            <a href="/en/insights/blog/post/finops-for-administration">FinOps for Administration at MHP</a>
+        </body>
+    </html>
+    """
+    with patch("httpx.AsyncClient.get", return_value=mock_resp):
+        articles = await fetch_official_newsroom_articles("MHP Management- und IT-Beratung GmbH")
+        assert isinstance(articles, list)
+        assert len(articles) > 0, "Expected official newsroom articles for MHP"
 
-    titles = [a["title"] for a in articles]
-    assert any("MHP" in t or "Top 10" in t or "AI" in t or "Transformation" in t for t in titles)
-    for art in articles:
-        assert art["source_type"] == "company_blog"
-        assert "mhp.com" in art["link"]
+        titles = [a["title"] for a in articles]
+        assert any("MHP" in t or "Top 10" in t or "AI" in t or "Transformation" in t for t in titles)
+        for art in articles:
+            assert art["source_type"] == "company_blog"
+            assert "mhp.com" in art["link"]
 
 
 @pytest.mark.asyncio

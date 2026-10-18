@@ -33,15 +33,86 @@ _ROLE_SENSITIVITIES = {
 
 
 def visible_sensitivities(role: str | None) -> set[str]:
+    """Calculate the permitted document sensitivity clearance levels for a given user IAM role.
+
+    Evaluates RBAC role mappings ('admin', 'lead', 'member') against document sensitivity
+    tiers ('normal', 'personal', 'special'). Follows least-privilege security defaults by
+    falling back to {'normal'} for unknown or omitted roles.
+
+    Agent Metadata:
+      @intent: Enforce strict role-based access control (RBAC) and GDPR sensitivity boundaries on document search.
+      @domain: Bidding/DocumentLibrary
+      @capability: auth:determine_sensitivity
+      @keywords: rbac, sensitivity, access_control, gdpr, clearance, least_privilege
+      @side_effects: none (pure)
+      @idempotent: true
+      @agent_notes: Admins see special/personal/normal; leads/members see personal/normal; others see only normal.
+
+    Contracts:
+      @param role (str | None): User's authenticated role identifier from gateway headers.
+      @return (set[str]): Set of allowable sensitivity string tags.
+      @raises None: Pure function.
+
+    Example:
+      >>> levels = visible_sensitivities("member")
+      >>> assert levels == {"normal", "personal"}
+    """
     return _ROLE_SENSITIVITIES.get((role or "").lower(), {"normal"})
 
 
 def _fingerprint(doc: BidDocument) -> str:
+    """Generate a 16-character content fingerprint hash for a document.
+
+    Hashes the normalized lower-case filename combined with the raw markdown text
+    using SHA-1 to deduplicate identical files across multiple bids in search results.
+
+    Agent Metadata:
+      @intent: Deduplicate and group identical document assets across different bids.
+      @domain: Bidding/DocumentLibrary
+      @capability: util:document_fingerprint
+      @keywords: fingerprint, sha1, hash, deduplication, content_identity
+      @side_effects: none (pure)
+      @idempotent: true
+      @agent_notes: Truncates SHA-1 hex digest to 16 characters.
+
+    Contracts:
+      @param doc (BidDocument): The document entity to fingerprint.
+      @return (str): 16-character hexadecimal fingerprint.
+      @raises None: Pure function.
+
+    Example:
+      >>> fp = _fingerprint(doc)
+      >>> len(fp)
+      16
+    """
     payload = f"{(doc.filename or '').lower()}|{doc.markdown or ''}"
     return hashlib.sha1(payload.encode()).hexdigest()[:16]
 
 
 def _snippet(markdown: str | None, limit: int = 240) -> str:
+    """Generate a clean whitespace-collapsed preview snippet of markdown text.
+
+    Collapses consecutive whitespace sequences and truncates the string to the
+    configured character limit, appending an ellipsis ('…') if truncated.
+
+    Agent Metadata:
+      @intent: Produce compact, readable previews of document content for search hit lists.
+      @domain: Bidding/DocumentLibrary
+      @capability: util:snippet_generation
+      @keywords: snippet, preview, truncate, text_normalization
+      @side_effects: none (pure)
+      @idempotent: true
+      @agent_notes: Appends '…' only if length strictly exceeds limit.
+
+    Contracts:
+      @param markdown (str | None): Raw markdown content.
+      @param limit (int): Maximum character length before truncation (default 240).
+      @return (str): Collapsed and truncated preview snippet.
+      @raises None: Pure function.
+
+    Example:
+      >>> snip = _snippet("## Heading\n\nLong paragraph text...", limit=50)
+    """
     text = " ".join((markdown or "").split())
     return text[:limit] + ("…" if len(text) > limit else "")
 
@@ -57,7 +128,40 @@ async def search_documents(
     user_id: str | None = None,
     limit: int = 25,
 ) -> dict[str, Any]:
-    """Search the corpus. Returns ranked, usage-annotated, sensitivity-filtered hits."""
+    """Search and rank the cross-bid document repository with sensitivity filtering and usage history.
+
+    Queries all documents uploaded across any historical or active bids. Filters hits
+    by sensitivity clearance, document kind, target customer/client, and CPV procurement codes.
+    When a topic query string 'q' is provided, ranks results using hybrid scoring combining
+    full-text exact matches and AI semantic embeddings. Identical documents across multiple
+    bids are grouped by content fingerprint, tracking usage history and highlighting whether
+    they were used in bids that were WON ('proven' assets).
+
+    Agent Metadata:
+      @intent: Discover and reuse high-performing, winning bid assets across organizational silos.
+      @domain: Bidding/DocumentLibrary
+      @capability: search:cross_bid_documents
+      @keywords: document_library, cross_bid_reuse, semantic_search, proven_assets, rbac_filtering
+      @side_effects: network:outbound (when semantic scoring queries AI connector)
+      @idempotent: true
+      @agent_notes: Sensitivity gate ensures users only see files within their clearance or uploaded by themselves.
+
+    Contracts:
+      @param db (AsyncSession): Active SQLAlchemy async session.
+      @param q (str | None): Optional search query for hybrid lexical/semantic ranking.
+      @param kind (str | None): Optional document category filter (e.g. 'reference', 'profile').
+      @param client (str | None): Optional buyer or customer name substring filter.
+      @param cpv (str | None): Optional CPV code filter matching bid cpv_codes.
+      @param role (str | None): User's authenticated IAM role (determines sensitivity visibility).
+      @param user_id (str | None): User ID of the searching user (uploader override for sensitivity).
+      @param limit (int): Maximum grouped search results to return (default 25).
+      @return (dict[str, Any]): Dictionary with 'results' list, 'total' count, and 'visible_sensitivities'.
+      @raises SQLAlchemyError: If query execution fails.
+
+    Example:
+      >>> search_res = await search_documents(db, q="cloud migration", role="lead", limit=10)
+      >>> print(search_res["results"][0]["proven"])
+    """
     rows = (
         await db.execute(
             select(BidDocument, Bid).join(Bid, BidDocument.bid_id == Bid.id).order_by(BidDocument.created_at.desc())

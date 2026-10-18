@@ -2,7 +2,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from core.config import CRAWLING_MS_URL, DISTRIBUTION_MS_URL
+from core.config import DISTRIBUTION_MS_URL, MARKET_RESEARCH_MS_URL
 from core.database import get_db
 from fastapi import APIRouter, Depends
 from models.bid import CompanyHandelsregister, CompanyNorthData
@@ -70,19 +70,19 @@ async def scrape_company_handelsregister(company_id: str, db: AsyncSession = Dep
         except Exception as e:
             logger.error(f"Could not save Handelsregister URL to distributing MS: {e}")
 
-        # 2. Trigger scraper in Crawling MS
+        # 2. Trigger scraper in Market Research MS
         scraped_data = {}
         try:
             resp = await client.post(
-                f"{CRAWLING_MS_URL}/api/v1/scrape/handelsregister",
+                f"{MARKET_RESEARCH_MS_URL}/api/v1/scrape/handelsregister",
                 json={"query": company_id},
             )
             if resp.status_code == 200:
                 scraped_data = resp.json()
             else:
-                logger.warning(f"Crawling MS returned status {resp.status_code} for Handelsregister scrape.")
+                logger.warning(f"Market Research MS returned status {resp.status_code} for Handelsregister scrape.")
         except Exception as e:
-            logger.error(f"Error calling Crawling MS for Handelsregister scrape: {e}")
+            logger.error(f"Error calling Market Research MS for Handelsregister scrape: {e}")
 
     # 3. Store / update in Bidding DB
     stmt = select(CompanyHandelsregister).where(func.lower(CompanyHandelsregister.company_id) == company_id.lower())
@@ -97,9 +97,13 @@ async def scrape_company_handelsregister(company_id: str, db: AsyncSession = Dep
     res_nd = await db.execute(select(CompanyNorthData).where(func.lower(CompanyNorthData.company_id) == company_id.lower()))
     nd_entry = res_nd.scalars().first()
 
-    court = nd_entry.register_court if nd_entry and nd_entry.register_court else "Amtsgericht Stuttgart"
-    reg_num = nd_entry.register_number if nd_entry and nd_entry.register_number else "HRB 205571"
-    capital = nd_entry.balance_sheet.get("stammkapital", "10.000.000 EUR") if nd_entry and isinstance(nd_entry.balance_sheet, dict) else "10.000.000 EUR"
+    court = nd_entry.register_court if nd_entry and nd_entry.register_court else "Amtsgericht"
+    reg_num = nd_entry.register_number if nd_entry and nd_entry.register_number else "k.A."
+    capital = nd_entry.balance_sheet.get("stammkapital", "k.A.") if nd_entry and isinstance(nd_entry.balance_sheet, dict) else "k.A."
+    seat = getattr(nd_entry, "city", None) or "Deutschland"
+    legal_form = getattr(nd_entry, "legal_form", None) or "k.A."
+    officers_list = [o.get("name", "") for o in (nd_entry.officers or []) if isinstance(o, dict) and o.get("name")] if nd_entry else []
+    management = ", ".join(officers_list) if officers_list else "k.A."
 
     if not docs:
         docs = [
@@ -112,28 +116,41 @@ async def scrape_company_handelsregister(company_id: str, db: AsyncSession = Dep
                     f"> 📄 **Original-Dokument:** [Handelsregister.de Suche öffnen]({target_url})\n\n"
                     f"## 🏢 Official Corporate Identity\n"
                     f"- **Firma / Legal Name:** {company_id}\n"
-                    f"- **Rechtsform / Legal Form:** GmbH\n"
+                    f"- **Rechtsform / Legal Form:** {legal_form}\n"
                     f"- **Registergericht / Court:** {court}\n"
                     f"- **Registernummer:** {reg_num}\n"
-                    f"- **Sitz / Registered Seat:** Ludwigsburg\n"
+                    f"- **Sitz / Registered Seat:** {seat}\n"
                     f"- **Status:** Aktuell\n\n"
                     f"## 💰 Capital & Financials\n"
                     f"- **Stammkapital / Grundkapital:** {capital}\n"
                     f"- **Währung:** EUR\n\n"
                     f"## 👥 Governance & Representatives\n"
-                    f"- **Vertretungsregelung:** Ist nur ein Geschäftsführer bestellt, so vertritt er die Gesellschaft allein. Sind mehrere Geschäftsführer bestellt, wird die Gesellschaft durch zwei Geschäftsführer gemeinsam vertreten.\n\n"
+                    f"- **Vertretungsregelung:** Gesetzliche Vertretungsregelung gemäß Handelsregister.\n\n"
                     f"## 📝 Auszug aus dem Registerinhalt\n"
                     f"Handelsregister Bekanntmachung - Aktueller Abdruck (AD)\n"
                     f"Amtsgericht: {court}\n"
                     f"Registernummer: {reg_num}\n"
                     f"Firma: {company_id}\n"
-                    f"Sitz: Ludwigsburg\n"
-                    f"Rechtsform: GmbH\n"
-                    f"Geschäftsführung: Federico Magno, Markus Wambach, Marc Oliver Zimmermann\n"
-                    f"Vertretungsregelung: Ist nur ein Geschäftsführer bestellt, so vertritt er die Gesellschaft allein. Sind mehrere Geschäftsführer bestellt, wird die Gesellschaft durch zwei Geschäftsführer gemeinsam vertreten."
+                    f"Sitz: {seat}\n"
+                    f"Rechtsform: {legal_form}\n"
+                    f"Geschäftsführung / Vorstand: {management}\n"
+                    f"Vertretungsregelung: Gesetzliche Vertretungsregelung gemäß Registerinhalt."
                 )
             }
         ]
+    elif docs and isinstance(docs, list) and nd_entry:
+        for d in docs:
+            if isinstance(d, dict) and "markdown" in d:
+                md = d["markdown"]
+                if "Registernummer: k.A." in md and reg_num != "k.A.":
+                    md = md.replace("Registernummer: k.A.", f"Registernummer: {reg_num}")
+                if "Registergericht / Court: Amtsgericht" in md and court != "Amtsgericht":
+                    md = md.replace("Registergericht / Court: Amtsgericht", f"Registergericht / Court: {court}")
+                if "Amtsgericht: Amtsgericht" in md and court != "Amtsgericht":
+                    md = md.replace("Amtsgericht: Amtsgericht", f"Amtsgericht: {court}")
+                if "Geschäftsführung / Vorstand: k.A." in md and management != "k.A.":
+                    md = md.replace("Geschäftsführung / Vorstand: k.A.", f"Geschäftsführung / Vorstand: {management}")
+                d["markdown"] = md
 
     if entry:
         entry.source = scraped_data.get("source", "handelsregister.de")

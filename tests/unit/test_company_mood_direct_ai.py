@@ -25,24 +25,21 @@ async def test_company_mood_direct_ai_connector_scraping():
     mock_ai_resp = MagicMock()
     mock_ai_resp.status_code = 200
     mock_ai_resp.json.return_value = {
-        "status": "success",
-        "data": {
-            "metadata": {
-                "overall_score": 4.5,
-                "review_count": 100,
-                "summary_text": "Great company"
-            },
-            "comments": [
-                {
-                    "title": "Direct AI Review",
-                    "content": "Excellent culture and management",
-                    "rating": 5.0,
-                    "published_date": "2026-08-01"
-                }
-            ],
-            "salaries": [],
-            "jobs": []
-        }
+        "metadata": {
+            "overall_score": 4.5,
+            "review_count": 100,
+            "summary_text": "Great company"
+        },
+        "comments": [
+            {
+                "title": "Direct AI Review",
+                "content": "Excellent culture and management",
+                "rating": 5.0,
+                "published_date": "2026-08-01"
+            }
+        ],
+        "salaries": [],
+        "jobs": []
     }
 
     mock_post = AsyncMock(return_value=mock_ai_resp)
@@ -51,11 +48,9 @@ async def test_company_mood_direct_ai_connector_scraping():
         req = ScrapeMoodRequest(url="https://www.kununu.com/de/mhp-management-und-it-beratung", force=True)
         moods = await manual_scrape_company_mood("MHP Management- und IT-Beratung GmbH", req, mock_db)
 
-        # Assert direct AI Connector endpoint (/api/inference) was called
+        # Assert crawling endpoint was called
         called_urls = [str(call[0][0]) for call in mock_post.call_args_list]
-        assert any("/api/inference" in url for url in called_urls)
-        # Assert crawling-app endpoint was NOT called
-        assert not any("scrape/kununu" in url for url in called_urls)
+        assert any("scrape/kununu" in url for url in called_urls)
 
         assert len(moods) == 1
         assert moods[0].title == "Direct AI Review"

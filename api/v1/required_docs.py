@@ -70,8 +70,8 @@ async def upload_required_document(
     rd.uploaded_by = request.headers.get("X-User-ID") or "anonymous"
     rd.uploaded_at = datetime.now(UTC)
     rd.uploaded_filename = filename
-    rd.link_original_doc = f"/ms/dashboard/mock-documents/{filename}"
-    rd.link_parsed_doc = f"/ms/dashboard/mock-documents/{filename}?parsed=true"
+    rd.link_original_doc = None
+    rd.link_parsed_doc = None
     rd.user_override = False  # Reset user override on new uploads
 
     activity.record(

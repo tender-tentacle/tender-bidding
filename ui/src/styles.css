@@ -202,7 +202,8 @@ body {
   align-items: center;
   gap: 24px;
 }
-.tt-sub-header button {
+.tt-sub-header button,
+.tt-sub-header a {
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -216,8 +217,10 @@ body {
   align-items: center;
   transition: color 0.2s;
   font-family: inherit;
+  text-decoration: none;
 }
-.tt-sub-header button.active {
+.tt-sub-header button.active,
+.tt-sub-header a.active {
   color: #fff;
   font-weight: 600;
   border-bottom-color: var(--brand-red);
@@ -271,6 +274,8 @@ body {
   cursor: pointer;
   transition: all 0.2s ease;
   display: block;
+  text-decoration: none;
+  color: inherit;
 }
 
 /* ── Cards / Workspaces ─────────────────────────────────────────────── */

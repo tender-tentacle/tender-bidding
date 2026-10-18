@@ -118,7 +118,13 @@ threshold: 69
 """
 
 
+import os
+
+
 async def main() -> None:
+    if os.getenv("ENVIRONMENT", "").upper() == "PRODUCTION":
+        raise RuntimeError("Refusing to seed sample bids in PRODUCTION environment.")
+
     await init_db()
     async with SessionLocal() as db:
         # Active decision matrix (idempotent: only when none exists yet).

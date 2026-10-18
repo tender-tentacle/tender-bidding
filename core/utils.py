@@ -7,17 +7,31 @@ logger = logging.getLogger("bidding_utils")
 
 
 def clean_company_name_candidates(name: str) -> list[str]:
-    """
+    """Generate search query candidates for company lookups by progressive right-to-left reduction.
+
     Generates search query candidates by progressively removing the LAST word
     from the right, assuming the most important brand words are at the FRONT.
+    Strips German and international legal forms, representation clauses ('vertreten durch'),
+    trailing conjunctions/prepositions, and punctuation.
 
-    e.g. "MHP Management- und IT-Beratung GmbH" ->
-    1. "MHP Management- und IT-Beratung GmbH" (Full raw name)
-    2. "MHP Management- und IT-Beratung" (Drop "GmbH")
-    3. "MHP Management und IT Beratung" (Normalized hyphens)
-    4. "MHP Management und IT" (Drop "Beratung")
-    5. "MHP Management" (Drop "IT" and "und")
-    6. "MHP" (Drop "Management")
+    Agent Metadata:
+      @intent: Produce high-recall query variations for company intelligence crawlers (Northdata, Handelsregister).
+      @domain: Bidding/Core
+      @capability: util:clean_company_name
+      @keywords: company_name, query_candidates, legal_forms, normalization, entity_resolution
+      @side_effects: none (pure)
+      @idempotent: true
+      @agent_notes: Filters out candidates that are purely legal form identifiers.
+
+    Contracts:
+      @param name (str): Raw company name string (e.g. from tender buyer or contractor field).
+      @return (list[str]): Deduplicated list of search candidate strings ordered from specific to general.
+      @raises None: Pure function.
+
+    Example:
+      >>> candidates = clean_company_name_candidates("MHP Management- und IT-Beratung GmbH")
+      >>> "MHP" in candidates
+      True
     """
     if not name or not name.strip():
         return []
@@ -51,7 +65,26 @@ def clean_company_name_candidates(name: str) -> list[str]:
     pattern_legal = r"\b(" + "|".join(legal_forms) + r")\b"
     pattern_exact_legal = r"^(" + "|".join(legal_forms) + r")$"
 
-    def _add(cand: str):
+    def _add(cand: str) -> None:
+        """Sanitize and record a company candidate string if distinct and non-legal.
+
+        Agent Metadata:
+          @intent: Clean whitespace, trailing noise words, and append valid search candidate tokens.
+          @domain: Bidding/Core
+          @capability: util:normalize_token
+          @keywords: sanitize, regex, token_clean
+          @side_effects: none (mutates local candidates list)
+          @idempotent: false
+          @agent_notes: Ignores candidates with length < 2 or pure legal form names.
+
+        Contracts:
+          @param cand (str): Candidate string.
+          @return None: Appends in-place to candidates list.
+          @raises None: Pure helper closure.
+
+        Example:
+          >>> _add("MHP Management")
+        """
         c = re.sub(r"\s+", " ", cand).strip()
         c = re.sub(r"[\s,\.-]+$", "", c).strip()
         c = re.sub(r"^\s*[\(\[\{]\s*", "", c).strip()

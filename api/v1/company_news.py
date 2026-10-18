@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -42,8 +43,6 @@ async def fetch_official_newsroom_articles(company_name: str) -> list[dict]:
     """
     import hashlib
 
-    from bs4 import BeautifulSoup
-
     c_lower = company_name.lower().strip()
     target_urls = []
 
@@ -72,11 +71,19 @@ async def fetch_official_newsroom_articles(company_name: str) -> list[dict]:
             try:
                 r = await client.get(url)
                 if r.status_code == 200:
-                    soup = BeautifulSoup(r.text, "html.parser")
+                    link_matches = []
+                    try:
+                        from bs4 import BeautifulSoup
+                        soup = BeautifulSoup(r.text, "html.parser")
+                        for a in soup.find_all("a", href=True):
+                            link_matches.append((a["href"], a.get_text(strip=True)))
+                    except ImportError:
+                        for match in re.finditer(r'<a\s+[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', r.text, re.DOTALL | re.IGNORECASE):
+                            clean_text = re.sub(r'<[^>]+>', '', match.group(2)).strip()
+                            link_matches.append((match.group(1), clean_text))
+
                     base_domain = f"{url.split('://')[0]}://{url.split('://')[1].split('/')[0]}"
-                    for a in soup.find_all("a", href=True):
-                        href = a["href"]
-                        title = a.get_text(strip=True)
+                    for href, title in link_matches:
                         if ("/insights/" in href or "/newsroom/" in href or "/presse/" in href or "/stories/" in href) and len(title) > 20 and title not in [art["title"] for art in articles]:
                             full_link = href if href.startswith("http") else f"{base_domain}{href}"
                             articles.append({

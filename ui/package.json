@@ -13,7 +13,8 @@
     "@fontsource/inter": "^5.2.8",
     "@porsche-design-system/components-react": "^4.3.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "react-router-dom": "^7.18.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

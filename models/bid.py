@@ -82,6 +82,7 @@ class Bid(Base):
     price_quality_ratio: Mapped[str | None] = mapped_column(String(255))
     target_budget: Mapped[str | None] = mapped_column(String(255))
     procurement_procedure: Mapped[str | None] = mapped_column(String(255))
+    country: Mapped[str] = mapped_column(String(10), default="GER", index=True)
 
     # Company Data Summary & Intelligence One Pager
     company_summary: Mapped[dict | None] = mapped_column(JSON, default=dict)
@@ -521,6 +522,8 @@ class CompanyNorthData(Base):
     is_valid_profile: Mapped[bool | None] = mapped_column(Boolean, default=True)
     no_profile_found: Mapped[bool | None] = mapped_column(Boolean, default=False)
     no_profile_reason: Mapped[str | None] = mapped_column(Text)
+    verification_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    verification_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     crawled_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 

@@ -1,8 +1,9 @@
+import html
 import logging
 from datetime import UTC, datetime
 
 import httpx
-from core.config import CRAWLING_MS_URL, DISTRIBUTION_MS_URL
+from core.config import DISTRIBUTION_MS_URL, MARKET_RESEARCH_MS_URL
 from core.database import get_db
 from fastapi import APIRouter, Depends, HTTPException
 from models.bid import CompanyNorthData
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["company-northdata"])
 logger = logging.getLogger("company-northdata")
+
 
 
 class CompanyNorthDataSchema(BaseModel):
@@ -42,6 +44,8 @@ class CompanyNorthDataSchema(BaseModel):
     is_valid_profile: bool | None = True
     no_profile_found: bool | None = False
     no_profile_reason: str | None = None
+    verification_confidence: float | None = None
+    verification_reason: str | None = None
     crawled_date: datetime
 
     class Config:
@@ -86,21 +90,11 @@ async def scrape_company_northdata(company_id: str, request: ScrapeNorthDataRequ
 
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        # 1. Save link to Distributing MS
-        try:
-            await client.post(
-                f"{DISTRIBUTION_MS_URL}/api/v1/taxonomy/target_companies/by_name/{company_id}/links?link_type=NORTHDATA",
-                json={"url": target_url, "link_type": "NORTHDATA"},
-            )
-            logger.info("Successfully saved North Data URL to distributing MS.")
-        except Exception as e:
-            logger.error(f"Could not save North Data URL to distributing MS: {e}")
-
-        # 2. Trigger scraper in Crawling MS
+        # 1. Trigger scraper in Market Research MS first (to get canonical URL)
         scraped_data = {}
         try:
             resp = await client.post(
-                f"{CRAWLING_MS_URL}/api/v1/scrape/northdata",
+                f"{MARKET_RESEARCH_MS_URL}/api/v1/scrape/northdata",
                 json={"query": company_id, "url": target_url},
             )
             resp.raise_for_status()
@@ -109,15 +103,31 @@ async def scrape_company_northdata(company_id: str, request: ScrapeNorthDataRequ
             logger.error(f"Scraping North Data failed for {company_id}: {e}")
             raise HTTPException(status_code=500, detail=f"Scraping North Data failed: {e}")
 
+        # Use canonical URL returned by scraper (resolves correct HRB from page metadata)
+        canonical_url = scraped_data.get("source_url") or target_url
+
+        # 2. Save canonical link to Distributing MS
+        try:
+            await client.post(
+                f"{DISTRIBUTION_MS_URL}/api/v1/taxonomy/target_companies/by_name/{company_id}/links?link_type=NORTHDATA",
+                json={"url": canonical_url, "link_type": "NORTHDATA"},
+            )
+            logger.info(f"Successfully saved canonical North Data URL ({canonical_url}) to distributing MS.")
+        except Exception as e:
+            logger.error(f"Could not save North Data URL to distributing MS: {e}")
+
     # 3. Save / Update in DB
     stmt = select(CompanyNorthData).where(func.lower(CompanyNorthData.company_id) == company_id.lower())
     res = await db.execute(stmt)
     entry = res.scalars().first()
 
+    raw_name = scraped_data.get("company_name")
+    cleaned_company_name = html.unescape(raw_name) if raw_name is not None else None
+
     if not entry:
         entry = CompanyNorthData(
             company_id=company_id,
-            company_name=scraped_data.get("company_name"),
+            company_name=cleaned_company_name,
             address=scraped_data.get("address"),
             founding_date=scraped_data.get("founding_date"),
             register_court=scraped_data.get("register_court"),
@@ -138,15 +148,18 @@ async def scrape_company_northdata(company_id: str, request: ScrapeNorthDataRequ
             financials=scraped_data.get("financials"),
             ownership=scraped_data.get("ownership"),
             svg_diagrams=scraped_data.get("svg_diagrams"),
-            source_url=request.url,
+            source_url=scraped_data.get("source_url") or request.url,
             is_valid_profile=scraped_data.get("is_valid_profile", True),
             no_profile_found=scraped_data.get("no_profile_found", False),
             no_profile_reason=scraped_data.get("no_profile_reason"),
+            verification_confidence=scraped_data.get("verification_confidence"),
+            verification_reason=scraped_data.get("verification_reason"),
             crawled_date=datetime.now(UTC),
         )
         db.add(entry)
     else:
-        entry.company_name = scraped_data.get("company_name") if scraped_data.get("company_name") is not None else entry.company_name
+        if raw_name is not None:
+            entry.company_name = html.unescape(raw_name)
         entry.address = scraped_data.get("address") or entry.address
         entry.founding_date = scraped_data.get("founding_date") or entry.founding_date
         entry.register_court = scraped_data.get("register_court")
@@ -172,10 +185,12 @@ async def scrape_company_northdata(company_id: str, request: ScrapeNorthDataRequ
         entry.financials = scraped_data.get("financials") or entry.financials
         entry.ownership = scraped_data.get("ownership") or entry.ownership
         entry.svg_diagrams = scraped_data.get("svg_diagrams") or entry.svg_diagrams
-        entry.source_url = request.url
+        entry.source_url = scraped_data.get("source_url") or request.url
         entry.is_valid_profile = scraped_data.get("is_valid_profile", True)
         entry.no_profile_found = scraped_data.get("no_profile_found", False)
         entry.no_profile_reason = scraped_data.get("no_profile_reason")
+        entry.verification_confidence = scraped_data.get("verification_confidence")
+        entry.verification_reason = scraped_data.get("verification_reason")
         entry.crawled_date = datetime.now(UTC)
 
     try:

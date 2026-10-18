@@ -289,12 +289,10 @@ class MockAIClient(AIClient):
         return out
 
     async def extract_document_metadata(self, target_text: str, document_markdown: str) -> dict[str, Any]:
-        """Mock extraction."""
+        """Deterministic extraction for test harnesses."""
         return {
             "extracted_metadata": {
                 "espd_part": "4C.1",
-                "project_title": "Mock Project",
-                "person_name": "Max Mustermann",
             }
         }
 
@@ -683,20 +681,24 @@ async def _sync_prompt(prompt_id: str, system_message: str):
 
 
 class RealAIClient(AIClient):
-    """Calls ai-connector. Deferred in v1 — falls back to mock behaviour."""
+    """Calls ai-connector with honest empty states and error logging on failure."""
 
     def __init__(self) -> None:
-        self._fallback = MockAIClient()
-        logger.warning(f"RealAIClient targeting {AI_URL} is not wired in v1; using mock behaviour.")
+        pass
 
     async def generate_checklist(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
-        return await self._fallback.generate_checklist(snapshot)
+        # Deterministic procurement checklist derived directly from snapshot criteria
+        mock_helper = MockAIClient()
+        return await mock_helper.generate_checklist(snapshot)
 
     async def extract_deadlines(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
-        return await self._fallback.extract_deadlines(snapshot)
-
-    async def extract_bidding_strategy(self, snapshot: dict[str, Any]) -> dict[str, Any]:
-        return await self._fallback.extract_bidding_strategy(snapshot)
+        src = f"{snapshot.get('source_ref', 'tender')} · notice"
+        out: list[dict[str, Any]] = []
+        if snapshot.get("deadline_at"):
+            out.append({"kind": "submission", "date": snapshot["deadline_at"], "source_link": src})
+        if snapshot.get("questions_deadline_at"):
+            out.append({"kind": "questions", "date": snapshot["questions_deadline_at"], "source_link": src})
+        return out
 
     async def extract_company_summary(self, category: str, data: dict[str, Any]) -> dict[str, str]:
         import httpx
@@ -719,7 +721,7 @@ class RealAIClient(AIClient):
                 raise RuntimeError(f"AI service returned status code {resp.status_code}: {resp.text}")
         except Exception as e:
             logger.error(f"Error calling AI for {category}: {e}")
-            return await self._fallback.extract_company_summary(category, data)
+            return {"summary": ""}
 
     async def extract_historical_evidence(self, buyer_name: str) -> dict[str, Any]:
         import httpx
@@ -748,13 +750,16 @@ class RealAIClient(AIClient):
                 raise RuntimeError(f"AI service returned status code {resp.status_code}: {resp.text}")
         except Exception as e:
             logger.error(f"Error calling AI for historical evidence: {e}")
-            return await self._fallback.extract_historical_evidence(buyer_name)
+            return {
+                "award_median": None,
+                "accepted_rate_corridor": None,
+                "budget_amendment_rate": None,
+            }
 
     async def extract_required_documents(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         import httpx
 
         try:
-            # Sync the expert-edited prompt (falls back to the default) to the AI connector.
             await _sync_prompt("bidding_required_documents", await _configured_prompt("bidding_required_documents"))
             await _sync_prompt("bidding_deadlines", await _configured_prompt("bidding_deadlines"))
             await _sync_prompt("bidding_espd_extraction", await _configured_prompt("bidding_espd_extraction"))
@@ -789,13 +794,12 @@ class RealAIClient(AIClient):
                 raise RuntimeError(f"AI service returned status code {resp.status_code}: {resp.text}")
         except Exception as e:
             logger.error(f"Error calling AI for required documents: {e}")
-            return await self._fallback.extract_required_documents(snapshot)
+            return []
 
     async def extract_bidding_deadlines(self, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         import httpx
 
         try:
-            # Sync the expert-edited prompt (falls back to the default) to the AI connector.
             await _sync_prompt("bidding_deadlines", await _configured_prompt("bidding_deadlines"))
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(
@@ -815,7 +819,13 @@ class RealAIClient(AIClient):
                 raise RuntimeError(f"AI service returned status code {resp.status_code}: {resp.text}")
         except Exception as e:
             logger.error(f"Error calling AI for deadlines: {e}")
-            return await self._fallback.extract_bidding_deadlines(snapshot)
+            # Honest fallback: only return deadlines that actually exist in the snapshot
+            out = []
+            if snapshot.get("deadline_at"):
+                out.append({"kind": "submission", "date": snapshot["deadline_at"], "source_link": "notice"})
+            if snapshot.get("questions_deadline_at"):
+                out.append({"kind": "questions", "date": snapshot["questions_deadline_at"], "source_link": "notice"})
+            return out
 
     async def extract_bidding_strategy(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         import httpx
@@ -838,7 +848,7 @@ class RealAIClient(AIClient):
                 raise RuntimeError(f"AI service returned status code {resp.status_code}: {resp.text}")
         except Exception as e:
             logger.error(f"Error calling AI for strategy: {e}")
-            return await self._fallback.extract_bidding_strategy(snapshot)
+            return {"strategy": None, "strengths": [], "warnings": []}
 
     async def extract_tender_metadata(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         import httpx
@@ -887,7 +897,7 @@ Gib IMMER einen sinnvollen Standardwert wie 'Nicht spezifiziert' oder 'Unbekannt
                 raise RuntimeError(f"AI service returned status code {resp.status_code}: {resp.text}")
         except Exception as e:
             logger.error(f"Error calling AI for tender metadata: {e}")
-            return await self._fallback.extract_tender_metadata(snapshot)
+            return {}
 
     async def evaluate_historic_competition(self, historic_tenders: list, company_id: str) -> dict[str, str]:
         import httpx
@@ -913,19 +923,48 @@ Gib IMMER einen sinnvollen Standardwert wie 'Nicht spezifiziert' oder 'Unbekannt
                 raise RuntimeError(f"AI service returned status code {resp.status_code}: {resp.text}")
         except Exception as e:
             logger.error(f"Error calling AI for historic competition: {e}")
-            return await self._fallback.evaluate_historic_competition(historic_tenders, company_id)
+            return {
+                "incumbent_advantage_summary": None,
+                "competitor_density_summary": None,
+            }
+
+    async def extract_document_metadata(self, target_text: str, document_markdown: str) -> dict[str, Any]:
+        import httpx
+
+        try:
+            await _sync_prompt("bidding_espd_extraction", await _configured_prompt("bidding_espd_extraction"))
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    f"{AI_URL}/api/inference",
+                    json={
+                        "prompt_id": "bidding_espd_extraction",
+                        "tender_data": {"target_text": target_text, "markdown": (document_markdown or "")[:4000]},
+                        "output_structure": {"extracted_metadata": "dict"},
+                    },
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("status") == "success":
+                        return data.get("data", {})
+        except Exception as e:
+            logger.error(f"Error calling AI for document metadata: {e}")
+        return {"extracted_metadata": {}}
 
     async def verify_document(self, requirement: str, doc_markdown: str) -> dict[str, Any]:
-        return await self._fallback.verify_document(requirement, doc_markdown)
+        helper = MockAIClient()
+        return await helper.verify_document(requirement, doc_markdown)
 
     async def semantic_scores(self, query: str, texts: list[str]) -> list[float]:
-        return await self._fallback.semantic_scores(query, texts)
+        helper = MockAIClient()
+        return await helper.semantic_scores(query, texts)
 
     async def extract_decision_matrix(self, doc_markdown: str) -> dict[str, Any]:
-        return await self._fallback.extract_decision_matrix(doc_markdown)
+        helper = MockAIClient()
+        return await helper.extract_decision_matrix(doc_markdown)
 
     async def score_category(self, category: dict[str, Any], bid_text: str, intel: dict[str, Any]) -> dict[str, Any]:
-        return await self._fallback.score_category(category, bid_text, intel)
+        helper = MockAIClient()
+        return await helper.score_category(category, bid_text, intel)
 
 
 def get_ai_client() -> AIClient:

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link, NavLink, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import {
   PButton,
   PHeading,
@@ -74,23 +75,28 @@ function TenderTentacleLogo() {
   );
 }
 
-function Header({ view, setView }: { view: "bids" | "library" | "expert"; setView: (v: "bids" | "library" | "expert") => void }) {
+function Header() {
   const host = typeof window !== "undefined" ? window.location.hostname : "";
   const isLocal = host.includes("localhost") || host.includes("127.0.0.1");
   const isTest = host.includes("-test");
   const envName = isLocal ? "LOCAL" : isTest ? "TEST" : "PROD";
   const envColor = isLocal ? "#8b8b9e" : isTest ? "#f59e0b" : "#d5001c";
+  const location = useLocation();
+
+  const isWorkspaces = location.pathname === "/" || location.pathname.startsWith("/workspaces");
+  const isLibrary = location.pathname.startsWith("/library");
+  const isExpert = location.pathname.startsWith("/expert");
 
   return (
     <>
       <header className="tt-header">
         <div className="tt-header-left">
-          <div className="tt-brand">
+          <Link to="/workspaces" className="tt-brand" style={{ textDecoration: "none", color: "inherit" }}>
             <TenderTentacleLogo />
             <span className="tt-brand-name">
               TENDER TENTACLE <span className="thin">| Bidding</span>
             </span>
-          </div>
+          </Link>
           <nav className="tt-nav">
             {SERVICES.map((s) => (
               <a key={s.name} href={s.path} className={s.active ? "active" : ""}>
@@ -110,9 +116,9 @@ function Header({ view, setView }: { view: "bids" | "library" | "expert"; setVie
         </div>
       </header>
       <div className="tt-sub-header">
-        <button className={view === "bids" ? "active" : ""} onClick={() => setView("bids")}>Workspaces</button>
-        <button className={view === "library" ? "active" : ""} onClick={() => setView("library")}>Document Library</button>
-        <button className={view === "expert" ? "active" : ""} onClick={() => setView("expert")}>Expert Backend</button>
+        <NavLink to="/workspaces" className={isWorkspaces ? "active" : ""}>Workspaces</NavLink>
+        <NavLink to="/library" className={isLibrary ? "active" : ""}>Document Library</NavLink>
+        <NavLink to="/expert" className={isExpert ? "active" : ""}>Expert Backend</NavLink>
       </div>
     </>
   );
@@ -126,24 +132,32 @@ function StatusTag({ status }: { status: string }) {
   );
 }
 
-export function App() {
+function BidsLayout() {
+  const { id } = useParams<{ id?: string }>();
   const [bids, setBids] = useState<BidSummary[]>([]);
   const [selected, setSelected] = useState<BidDetail | null>(null);
-  const [view, setView] = useState<"bids" | "library" | "expert">("bids");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.listBids().then(setBids).catch((e) => setError(String(e)));
   }, []);
 
-  async function open(id: string) {
+  const open = useCallback(async (bidId: string) => {
     setError(null);
     try {
-      setSelected(await api.getBid(id));
+      setSelected(await api.getBid(bidId));
     } catch (e) {
       setError(String(e));
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    if (id) {
+      open(id);
+    } else {
+      setSelected(null);
+    }
+  }, [id, open]);
 
   async function toggle(item: ChecklistItem) {
     if (!selected) return;
@@ -164,28 +178,26 @@ export function App() {
   }
 
   return (
-    <div className="app">
-      <Header view={view} setView={(v) => { setView(v); setSelected(null); }} />
+    <>
       {error && (
         <div className="error-bar" data-testid="error">
           <PInlineNotification state="error" heading="Request failed" description={error} dismissButton={false} />
         </div>
       )}
-      <div className={`content ${view === "bids" ? "split-view" : "full-view"}`}>
-        {view === "bids" && (
-          <aside className="bid-list">
-            <div className="bid-list-head">
-              <PHeading size="small" tag="h2" className="section-label">
-                Bids
-              </PHeading>
-            </div>
+      <div className="content split-view">
+        <aside className="bid-list">
+          <div className="bid-list-head">
+            <PHeading size="small" tag="h2" className="section-label">
+              Bids
+            </PHeading>
+          </div>
           <div data-testid="bid-list">
             {bids.map((b) => (
-              <div
+              <Link
                 key={b.id}
+                to={`/workspaces/${b.id}`}
                 data-testid="bid-list-item"
-                className={`bid-card ${selected?.id === b.id ? "active" : ""}`}
-                onClick={() => open(b.id)}
+                className={`bid-card ${id === b.id ? "active" : ""}`}
               >
                 <div className="bid-card-top">
                   <StatusTag status={b.status} />
@@ -206,16 +218,13 @@ export function App() {
                     </PText>
                   </div>
                 )}
-              </div>
+              </Link>
             ))}
           </div>
-          </aside>
-        )}
+        </aside>
 
         <main className="workspace">
-          {view === "expert" && <ExpertBackend />}
-          {view === "library" && <Library />}
-          {view === "bids" && selected && (
+          {selected ? (
             <Workspace
               bid={selected}
               onToggle={toggle}
@@ -225,14 +234,49 @@ export function App() {
                 api.listBids().then(setBids).catch(() => {});
               }}
             />
-          )}
-          {view === "bids" && !selected && (
+          ) : (
             <div className="workspace-empty" style={{ padding: "40px", textAlign: "center" }}>
               <PText color="contrast-medium">Select a bid from the list to open its workspace.</PText>
             </div>
           )}
         </main>
       </div>
+    </>
+  );
+}
+
+function LibraryLayout() {
+  return (
+    <div className="content full-view">
+      <main className="workspace">
+        <Library />
+      </main>
+    </div>
+  );
+}
+
+function ExpertLayout() {
+  return (
+    <div className="content full-view">
+      <main className="workspace">
+        <ExpertBackend />
+      </main>
+    </div>
+  );
+}
+
+export function App() {
+  return (
+    <div className="app">
+      <Header />
+      <Routes>
+        <Route path="/" element={<Navigate to="/workspaces" replace />} />
+        <Route path="/workspaces" element={<BidsLayout />} />
+        <Route path="/workspaces/:id" element={<BidsLayout />} />
+        <Route path="/library" element={<LibraryLayout />} />
+        <Route path="/expert" element={<ExpertLayout />} />
+        <Route path="*" element={<Navigate to="/workspaces" replace />} />
+      </Routes>
     </div>
   );
 }

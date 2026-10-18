@@ -77,3 +77,35 @@ async def test_company_northdata_no_profile_persistence():
         assert saved.no_profile_found is True
         assert saved.no_profile_reason == "No North Data profile available for this entity"
 
+
+@pytest.mark.asyncio
+async def test_company_northdata_mismatch_reset():
+    """Validates that when a profile is rejected as a mismatch, company_name and details are reset."""
+    async with SessionLocal() as db_session:
+        data = CompanyNorthData(
+            company_id="Dataport AöR",
+            company_name=None,
+            is_valid_profile=False,
+            no_profile_found=True,
+            no_profile_reason="Entity name mismatch: scraped 'ASV Proppenkieker Dataport e. V.' is an association/club",
+            officers=[],
+            events=[],
+            history_timeline=[],
+            financials=[],
+            source_url="https://www.northdata.de/Dataport+A%C3%B6R,+Altenholz",
+            crawled_date=datetime.now(UTC),
+        )
+        db_session.add(data)
+        await db_session.commit()
+
+        res = await db_session.execute(
+            select(CompanyNorthData).where(CompanyNorthData.company_id == "Dataport AöR")
+        )
+        saved = res.scalars().first()
+        assert saved is not None
+        assert saved.company_name is None
+        assert saved.is_valid_profile is False
+        assert saved.no_profile_found is True
+        assert "mismatch" in saved.no_profile_reason.lower()
+
+

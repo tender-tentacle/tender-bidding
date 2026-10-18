@@ -12,11 +12,31 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def evaluate_pricing_strategy(db: AsyncSession, bid: Bid) -> dict[str, Any]:
-    """
-    Evaluates pricing strategy for a given bid.
-    Checks the BuyerIntelligenceCacheORM first. If expired or missing,
-    fetches historical data (currently mock/placeholder if no direct access),
-    calls the AI, and caches the result.
+    """Evaluate commercial pricing strategy and manage cached buyer intelligence.
+
+    Analyzes historical pricing intelligence and win corridors for the buyer associated
+    with the given bid. Inspects the BuyerIntelligenceCacheORM table; if cached data
+    is missing or older than 30 days, fetches historical evidence and queries the AI
+    pricing strategy prompt, caching the serialized JSON payload for future evaluations.
+
+    Agent Metadata:
+      @intent: Provide data-driven commercial pricing guidance and maintain a 30-day buyer intelligence cache.
+      @domain: Bidding/Pricing
+      @capability: pricing:evaluate_strategy
+      @keywords: pricing, strategy, buyer_intelligence, cache, rate_corridor, award_median
+      @side_effects: db:mutate (upserts buyer intelligence cache record and commits), network:outbound
+      @idempotent: true
+      @agent_notes: 30-day cache window per customer_id. Commits session.
+
+    Contracts:
+      @param db (AsyncSession): Active SQLAlchemy async database session.
+      @param bid (Bid): The Bid instance containing customer name and financial value context.
+      @return (dict[str, Any]): Strategy payload with 'strategy', 'strengths', 'warnings', and 'historical_data'.
+      @raises SQLAlchemyError: If cache read/write or commit fails.
+
+    Example:
+      >>> strat = await evaluate_pricing_strategy(db, bid)
+      >>> print(strat.get("strategy"))
     """
     buyer_name = bid.customer or "Unknown Buyer"
     buyer_name_clean = str(buyer_name).strip()

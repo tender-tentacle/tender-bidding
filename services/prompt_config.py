@@ -29,6 +29,31 @@ DEFAULT_PROMPTS: dict[str, str] = {
 
 
 async def get_prompt(db: AsyncSession, category: str) -> dict[str, Any]:
+    """Retrieve the current active prompt template for an inference category.
+
+    Queries the prompt configuration table for the given category. If a custom or
+    expert-edited template exists, returns it with version and timestamp metadata.
+    Otherwise, returns the built-in system default template marked with is_default=True.
+
+    Agent Metadata:
+      @intent: Fetch versioned or default AI prompt templates for inference pipelines.
+      @domain: Bidding/PromptEngineering
+      @capability: config:get_prompt
+      @keywords: prompt_config, ai_prompts, template, versioning, defaults
+      @side_effects: none (pure query)
+      @idempotent: true
+      @agent_notes: Raises LookupError if the requested category is not recognized in DEFAULT_PROMPTS.
+
+    Contracts:
+      @param db (AsyncSession): Active SQLAlchemy async database session.
+      @param category (str): The prompt category key (must exist in DEFAULT_PROMPTS).
+      @return (dict[str, Any]): Dictionary with 'category', 'prompt_template', 'version', 'updated_at', and 'is_default'.
+      @raises LookupError: If category is unknown.
+
+    Example:
+      >>> prompt = await get_prompt(db, "bidding_strategy")
+      >>> print(prompt["is_default"])
+    """
     if category not in DEFAULT_PROMPTS:
         raise LookupError(f"Unknown prompt category. Allowed: {sorted(DEFAULT_PROMPTS)}")
     row = (await db.execute(select(PromptConfig).where(PromptConfig.category == category))).scalar_one_or_none()
@@ -50,13 +75,63 @@ async def get_prompt(db: AsyncSession, category: str) -> dict[str, Any]:
 
 
 async def current_template(db: AsyncSession, category: str) -> str:
-    """The template the AI connector should receive (edited or default)."""
+    """Retrieve raw prompt template string for direct transmission to the AI connector.
+
+    Helper function wrapping get_prompt to isolate only the text string template
+    required by the AI inference client.
+
+    Agent Metadata:
+      @intent: Provide clean string template extraction for AI inference calls.
+      @domain: Bidding/PromptEngineering
+      @capability: config:current_template
+      @keywords: prompt_template, raw_string, ai_connector, inference
+      @side_effects: none (pure query)
+      @idempotent: true
+      @agent_notes: Unpacks 'prompt_template' from get_prompt.
+
+    Contracts:
+      @param db (AsyncSession): Database session.
+      @param category (str): Known prompt category.
+      @return (str): Raw template string.
+      @raises LookupError: If category is unrecognized.
+
+    Example:
+      >>> tpl = await current_template(db, "bidding_deadlines")
+    """
     return (await get_prompt(db, category))["prompt_template"]
 
 
 async def update_prompt(
     db: AsyncSession, category: str, *, prompt_template: str, change_summary: str | None, actor: str | None
 ) -> dict[str, Any]:
+    """Update a prompt template, bump its version, and record an audit history snapshot.
+
+    Mutates or initializes the active PromptConfig row for a category, increments
+    the version counter, creates an immutable PromptConfigHistory snapshot record,
+    and flushes changes to the session.
+
+    Agent Metadata:
+      @intent: Allow domain experts to adjust AI prompt templates with full versioning and history tracking.
+      @domain: Bidding/PromptEngineering
+      @capability: config:update_prompt
+      @keywords: update_prompt, version_bump, prompt_history, audit, human_override
+      @side_effects: db:mutate (upserts PromptConfig, inserts PromptConfigHistory)
+      @idempotent: false
+      @agent_notes: Flushes the session but does not commit; caller controls transaction completion.
+
+    Contracts:
+      @param db (AsyncSession): SQLAlchemy async session.
+      @param category (str): Target prompt category key.
+      @param prompt_template (str): New prompt template content (non-empty).
+      @param change_summary (str | None): Human rationale for the change.
+      @param actor (str | None): User identifier of the author.
+      @return (dict[str, Any]): Updated prompt metadata dictionary.
+      @raises LookupError: If category is unknown.
+      @raises ValueError: If prompt_template is blank.
+
+    Example:
+      >>> updated = await update_prompt(db, "bidding_deadlines", prompt_template="...", change_summary="Add ISO format rule", actor="expert_1")
+    """
     if category not in DEFAULT_PROMPTS:
         raise LookupError(f"Unknown prompt category. Allowed: {sorted(DEFAULT_PROMPTS)}")
     if not prompt_template.strip():
@@ -82,6 +157,31 @@ async def update_prompt(
 
 
 async def get_history(db: AsyncSession, category: str, limit: int = 20) -> list[dict[str, Any]]:
+    """Fetch the versioned revision history for a given prompt category.
+
+    Retrieves up to limit history entries from PromptConfigHistory ordered
+    by version descending, revealing who modified the prompt and when.
+
+    Agent Metadata:
+      @intent: Audit prompt template evolution across versions for reproducibility and rollbacks.
+      @domain: Bidding/PromptEngineering
+      @capability: config:get_prompt_history
+      @keywords: prompt_history, revisions, versions, audit, changelog
+      @side_effects: none (pure query)
+      @idempotent: true
+      @agent_notes: Orders by version descending; capped at limit records (default 20).
+
+    Contracts:
+      @param db (AsyncSession): Database session.
+      @param category (str): Prompt category key.
+      @param limit (int): Maximum records to retrieve (default 20).
+      @return (list[dict[str, Any]]): List of historical version objects with summaries and templates.
+      @raises LookupError: If category is unknown.
+
+    Example:
+      >>> history = await get_history(db, "bidding_strategy", limit=5)
+      >>> print(len(history))
+    """
     if category not in DEFAULT_PROMPTS:
         raise LookupError(f"Unknown prompt category. Allowed: {sorted(DEFAULT_PROMPTS)}")
     rows = (

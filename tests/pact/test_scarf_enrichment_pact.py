@@ -12,18 +12,33 @@ ai_ms_dir = Path(__file__).resolve().parents[3] / "artificial-intelligence-conne
 if str(ai_ms_dir) not in sys.path:
     sys.path.insert(0, str(ai_ms_dir))
 
-# Explicitly load core/scarf_extractor.py
-spec_scarf = importlib.util.spec_from_file_location("scarf_mod", str(ai_ms_dir / "core" / "scarf_extractor.py"))
-scarf_mod = importlib.util.module_from_spec(spec_scarf)
-sys.modules["scarf_mod"] = scarf_mod
-spec_scarf.loader.exec_module(scarf_mod)
+colliding_prefixes = ("api", "core", "models", "services", "utils")
+old_modules = {}
+for mod in list(sys.modules.keys()):
+    if mod in colliding_prefixes or any(mod.startswith(c + ".") for c in colliding_prefixes):
+        old_modules[mod] = sys.modules.pop(mod)
 
-# Explicitly load main.py
-spec_main = importlib.util.spec_from_file_location("ai_app_main", str(ai_ms_dir / "main.py"))
-ai_app_main = importlib.util.module_from_spec(spec_main)
-sys.modules["ai_app_main"] = ai_app_main
-spec_main.loader.exec_module(ai_app_main)
-ai_app = ai_app_main.app
+try:
+    # Explicitly load core/scarf_extractor.py
+    spec_scarf = importlib.util.spec_from_file_location("scarf_mod", str(ai_ms_dir / "core" / "scarf_extractor.py"))
+    scarf_mod = importlib.util.module_from_spec(spec_scarf)
+    sys.modules["scarf_mod"] = scarf_mod
+    spec_scarf.loader.exec_module(scarf_mod)
+
+    # Explicitly load main.py
+    spec_main = importlib.util.spec_from_file_location("ai_app_main", str(ai_ms_dir / "main.py"))
+    ai_app_main = importlib.util.module_from_spec(spec_main)
+    sys.modules["ai_app_main"] = ai_app_main
+    spec_main.loader.exec_module(ai_app_main)
+    ai_app = ai_app_main.app
+finally:
+    for mod, old_mod in old_modules.items():
+        if old_mod is not None:
+            sys.modules[mod] = old_mod
+        else:
+            sys.modules.pop(mod, None)
+    if str(ai_ms_dir) in sys.path:
+        sys.path.remove(str(ai_ms_dir))
 
 import pytest
 from httpx import ASGITransport, AsyncClient
